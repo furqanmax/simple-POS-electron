@@ -1,0 +1,129 @@
+{
+  "sizes": {
+    "A3": {
+      "width": 297,
+      "height": 420,
+      "unit": "mm",
+      "safeMargins": { "top": 10, "right": 10, "bottom": 10, "left": 10 },
+      "cssPageSize": "A3",
+      "charactersPerLine": 120,
+      "category": "standard"
+    },
+    "A4": {
+      "width": 210,
+      "height": 297,
+      "unit": "mm",
+      "safeMargins": { "top": 10, "right": 10, "bottom": 10, "left": 10 },
+      "cssPageSize": "A4",
+      "charactersPerLine": 80,
+      "category": "standard"
+    },
+    "A5": {
+      "width": 148,
+      "height": 210,
+      "unit": "mm",
+      "safeMargins": { "top": 10, "right": 10, "bottom": 10, "left": 10 },
+      "cssPageSize": "A5",
+      "charactersPerLine": 50,
+      "category": "standard"
+    },
+    "Letter": {
+      "width": 8.5,
+      "height": 11,
+      "unit": "in",
+      "safeMargins": { "top": 0.4, "right": 0.4, "bottom": 0.4, "left": 0.4 },
+      "cssPageSize": "Letter",
+      "charactersPerLine": 85,
+      "category": "us"
+    },
+    "Legal": {
+      "width": 8.5,
+      "height": 14,
+      "unit": "in",
+      "safeMargins": { "top": 0.4, "right": 0.4, "bottom": 0.4, "left": 0.4 },
+      "cssPageSize": "Legal",
+      "charactersPerLine": 85,
+      "category": "us"
+    },
+    "HalfLetter": {
+      "width": 5.5,
+      "height": 8.5,
+      "unit": "in",
+      "safeMargins": { "top": 0.3, "right": 0.3, "bottom": 0.3, "left": 0.3 },
+      "cssPageSize": "5.5in 8.5in",
+      "charactersPerLine": 50,
+      "category": "us"
+    },
+    "Thermal57": {
+      "width": 57,
+      "height": 200,
+      "unit": "mm",
+      "safeMargins": { "top": 5, "right": 2, "bottom": 5, "left": 2 },
+      "cssPageSize": "57mm 200mm",
+      "charactersPerLine": 32,
+      "category": "thermal",
+      "isContinuous": true
+    },
+    "Thermal58": {
+      "width": 58,
+      "height": 200,
+      "unit": "mm",
+      "safeMargins": { "top": 5, "right": 2, "bottom": 5, "left": 2 },
+      "cssPageSize": "58mm 200mm",
+      "charactersPerLine": 32,
+      "category": "thermal",
+      "isContinuous": true
+    },
+    "Thermal76": {
+      "width": 76,
+      "height": 200,
+      "unit": "mm",
+      "safeMargins": { "top": 5, "right": 3, "bottom": 5, "left": 3 },
+      "cssPageSize": "76mm 200mm",
+      "charactersPerLine": 40,
+      "category": "thermal",
+      "isContinuous": true
+    },
+    "Thermal80": {
+      "width": 80,
+      "height": 200,
+      "unit": "mm",
+      "safeMargins": { "top": 5, "right": 3, "bottom": 5, "left": 3 },
+      "cssPageSize": "80mm 200mm",
+      "charactersPerLine": 42,
+      "category": "thermal",
+      "isContinuous": true
+    },
+    "Strip8.5x4.25": {
+      "width": 8.5,
+      "height": 4.25,
+      "unit": "in",
+      "safeMargins": { "top": 0.2, "right": 0.2, "bottom": 0.2, "left": 0.2 },
+      "cssPageSize": "8.5in 4.25in",
+      "charactersPerLine": 85,
+      "category": "strip"
+    }
+  },
+  "layouts": {
+    "Classic": {
+      "description": "Traditional invoice layout with all details",
+      "features": ["header", "logo", "qr", "itemTable", "totals", "footer"],
+      "recommended": ["A4", "Letter", "Legal"]
+    },
+    "Minimal": {
+      "description": "Clean, simple layout with essential information",
+      "features": ["header", "itemTable", "totals"],
+      "recommended": ["A4", "A5", "Letter", "HalfLetter"]
+    },
+    "Compact": {
+      "description": "Optimized for thermal printers",
+      "features": ["header", "itemTable", "totals", "qr"],
+      "recommended": ["Thermal57", "Thermal58", "Thermal76", "Thermal80"]
+    },
+    "Detailed": {
+      "description": "Full details with multiple QR codes and metadata",
+      "features": ["header", "logo", "multipleQr", "itemTable", "taxBreakdown", "totals", "footer"],
+      "recommended": ["A3", "A4", "Letter", "Legal"]
+    }
+  }
+}

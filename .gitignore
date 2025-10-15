@@ -1,0 +1,14 @@
+node_modules/
+dist/
+release/
+*.log
+.DS_Store
+Thumbs.db
+*.db
+*.db-shm
+*.db-wal
+backups/
+uploads/
+.env
+.vscode/
+.idea/
