@@ -12,6 +12,8 @@ import { registerDashboardHandlers } from './handlers/dashboard-handlers';
 import { registerInstallmentHandlers } from './handlers/installment-handlers';
 import { registerLicenseHandlers } from './handlers/license-handlers';
 import { registerPaymentHandlers } from './handlers/payment-handlers';
+import { registerRoleHandlers } from './handlers/role-handlers';
+import { registerPermissionHandlers } from './handlers/permission-handlers';
 
 export function registerIPCHandlers(): void {
   console.log('Registering IPC handlers...');
@@ -19,6 +21,8 @@ export function registerIPCHandlers(): void {
   // Register authentication and user management
   registerAuthHandlers(ipcMain);
   registerUserHandlers(ipcMain);
+  registerRoleHandlers(ipcMain);
+  registerPermissionHandlers(ipcMain);
   registerCustomerHandlers(ipcMain);
   registerOrderHandlers(ipcMain);
   registerTemplateHandlers(ipcMain);

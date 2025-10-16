@@ -846,24 +846,72 @@ async function editTemplate(templateId: number) {
   }
 }
 
-// Users page
+// Users page - Enhanced with Roles & Permissions
 async function renderUsers() {
   const contentArea = document.getElementById('content-area');
   if (!contentArea) return;
   
-  if (currentUser?.role !== 'admin') {
+  // Check if user has permission to view users
+  try {
+    const canView = await window.posAPI.users.hasPermission(currentUser?.id || 0, 'users', 'read');
+    if (!canView) {
+      contentArea.innerHTML = '<h2>Unauthorized: You do not have permission to view users</h2>';
+      return;
+    }
+  } catch {
     contentArea.innerHTML = '<h2>Unauthorized</h2>';
     return;
   }
   
   contentArea.innerHTML = `
     <div class="flex-between mb-4">
-      <h2>Users</h2>
-      <button class="btn btn-primary" onclick="showCreateUserModal()">Add User</button>
+      <h2>User & Role Management</h2>
+      <div>
+        <button class="btn btn-secondary" onclick="showRoleManagement()">Manage Roles</button>
+        <button class="btn btn-primary" onclick="showCreateUserModal()">Add User</button>
+      </div>
     </div>
     
-    <div class="card">
-      <div id="users-list">Loading...</div>
+    <!-- Tabs for Users, Roles, and Audit Log -->
+    <div class="tabs mb-3">
+      <button class="tab-btn active" data-tab="users" onclick="switchUserTab('users')">Users</button>
+      <button class="tab-btn" data-tab="roles" onclick="switchUserTab('roles')">Roles</button>
+      <button class="tab-btn" data-tab="permissions" onclick="switchUserTab('permissions')">Permissions</button>
+      <button class="tab-btn" data-tab="audit" onclick="switchUserTab('audit')">Audit Log</button>
+    </div>
+    
+    <!-- Users Tab -->
+    <div id="users-tab" class="tab-content active">
+      <div class="card">
+        <div id="users-list">Loading...</div>
+      </div>
+    </div>
+    
+    <!-- Roles Tab -->
+    <div id="roles-tab" class="tab-content" style="display: none;">
+      <div class="card">
+        <div class="flex-between mb-3">
+          <h3>System Roles</h3>
+          <button class="btn btn-sm btn-primary" onclick="showCreateRoleModal()">Create Role</button>
+        </div>
+        <div id="roles-list">Loading...</div>
+      </div>
+    </div>
+    
+    <!-- Permissions Tab -->
+    <div id="permissions-tab" class="tab-content" style="display: none;">
+      <div class="card">
+        <h3>System Permissions</h3>
+        <div id="permissions-list">Loading...</div>
+      </div>
+    </div>
+    
+    <!-- Audit Log Tab -->
+    <div id="audit-tab" class="tab-content" style="display: none;">
+      <div class="card">
+        <h3>Permission Changes Audit Log</h3>
+        <div id="audit-list">Loading...</div>
+      </div>
     </div>
     
     <!-- Create User Modal -->
@@ -884,63 +932,67 @@ async function renderUsers() {
           </div>
           <div class="form-group">
             <label>Role</label>
-            <select id="new-role" required>
-              <option value="user">User</option>
-              <option value="admin">Admin</option>
-              <option value="guest">Guest</option>
+            <select id="new-user-role" required>
+              <!-- Will be populated with available roles -->
             </select>
           </div>
           <button type="submit" class="btn btn-primary">Create</button>
         </form>
       </div>
     </div>
+    
+    <!-- Create Role Modal -->
+    <div id="create-role-modal" class="modal" style="display:none;">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Create Role</h3>
+          <button onclick="closeCreateRoleModal()">&times;</button>
+        </div>
+        <form id="create-role-form">
+          <div class="form-group">
+            <label>Role Name</label>
+            <input type="text" id="new-role-name" required>
+          </div>
+          <div class="form-group">
+            <label>Description</label>
+            <textarea id="new-role-description" rows="3"></textarea>
+          </div>
+          <button type="submit" class="btn btn-primary">Create Role</button>
+        </form>
+      </div>
+    </div>
+    
+    <!-- User Permissions Modal -->
+    <div id="user-permissions-modal" class="modal" style="display:none;">
+      <div class="modal-content" style="max-width: 800px;">
+        <div class="modal-header">
+          <h3>Manage User Permissions</h3>
+          <button onclick="closeUserPermissionsModal()">&times;</button>
+        </div>
+        <div id="user-permissions-content">
+          <!-- Will be populated when opened -->
+        </div>
+      </div>
+    </div>
+    
+    <!-- Role Permissions Modal -->
+    <div id="role-permissions-modal" class="modal" style="display:none;">
+      <div class="modal-content" style="max-width: 800px;">
+        <div class="modal-header">
+          <h3>Manage Role Permissions</h3>
+          <button onclick="closeRolePermissionsModal()">&times;</button>
+        </div>
+        <div id="role-permissions-content">
+          <!-- Will be populated when opened -->
+        </div>
+      </div>
+    </div>
   `;
   
-  try {
-    const users = await window.posAPI.users.getAll();
-    const usersList = document.getElementById('users-list');
-    if (usersList) {
-      usersList.innerHTML = `
-        <table class="table">
-          <thead>
-            <tr>
-              <th>Username</th>
-              <th>Role</th>
-              <th>Status</th>
-              <th>Created</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${users.map((user: any) => `
-              <tr>
-                <td>${user.username}</td>
-                <td><span class="badge badge-${user.role === 'admin' ? 'primary' : 'secondary'}">${user.role}</span></td>
-                <td><span class="badge badge-${user.active ? 'success' : 'danger'}">${user.active ? 'Active' : 'Inactive'}</span></td>
-                <td>${new Date(user.created_at).toLocaleDateString()}</td>
-                <td>
-                  ${user.id !== currentUser?.id ? `
-                    <button class="btn btn-sm" onclick="toggleUserStatus(${user.id}, ${!user.active})">
-                      ${user.active ? 'Deactivate' : 'Activate'}
-                    </button>
-                    <button class="btn btn-sm btn-danger" onclick="deleteUser(${user.id})">Delete</button>
-                  ` : '<span class="text-muted">Current User</span>'}
-                </td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      `;
-    }
-    
-    // Setup form handler
-    const form = document.getElementById('create-user-form');
-    if (form) {
-      form.addEventListener('submit', handleCreateUser);
-    }
-  } catch (error: any) {
-    showToast('Failed to load users: ' + error.message, 'error');
-  }
+  // Load users list
+  await loadUsersList();
+  // Load roles for the dropdown
+  await loadRolesForDropdown();
 }
 
 // Installments page with enhanced creation wizard
@@ -1991,6 +2043,24 @@ async function deleteOpenOrder(id: number) {
 (window as any).closeInstallmentWizard = closeInstallmentWizard;
 (window as any).createInstallmentPlan = createInstallmentPlan;
 (window as any).toggleDarkMode = toggleDarkMode;
+// Role and Permission Management functions
+(window as any).switchUserTab = switchUserTab;
+(window as any).showRoleManagement = () => switchUserTab('roles');
+(window as any).showCreateRoleModal = showCreateRoleModal;
+(window as any).closeCreateRoleModal = closeCreateRoleModal;
+(window as any).deleteRole = deleteRole;
+(window as any).editRole = (roleId: number) => console.log('Edit role:', roleId);
+(window as any).showUserPermissions = showUserPermissions;
+(window as any).closeUserPermissionsModal = closeUserPermissionsModal;
+(window as any).showRolePermissions = showRolePermissions;
+(window as any).closeRolePermissionsModal = closeRolePermissionsModal;
+(window as any).toggleRolePermission = toggleRolePermission;
+(window as any).addUserRole = addUserRole;
+(window as any).removeUserRole = removeUserRole;
+(window as any).viewRoleUsers = viewRoleUsers;
+(window as any).removePermissionOverride = async (userId: number, permissionId: number) => {
+  console.log('Remove permission override:', userId, permissionId);
+};
 
 // User management functions
 function showCreateUserModal() {
@@ -2008,12 +2078,17 @@ async function handleCreateUser(e: Event) {
   try {
     const username = (document.getElementById('new-username') as HTMLInputElement).value;
     const password = (document.getElementById('new-password') as HTMLInputElement).value;
-    const role = (document.getElementById('new-role') as HTMLSelectElement).value;
+    const roleSelect = document.getElementById('new-user-role') as HTMLSelectElement;
+    const roleId = parseInt(roleSelect.value);
     
-    await window.posAPI.users.create(username, password, role as any);
+    // Create user with basic role first
+    const user = await window.posAPI.users.create(username, password, 'user');
+    // Then assign the selected role
+    await window.posAPI.users.assignRole(user.id, roleId);
+    
     showToast('User created successfully', 'success');
     closeCreateUserModal();
-    renderUsers();
+    await loadUsersList();
   } catch (error: any) {
     showToast('Failed to create user: ' + error.message, 'error');
   }
@@ -2023,7 +2098,7 @@ async function toggleUserStatus(userId: number, activate: boolean) {
   try {
     await window.posAPI.users.update(userId, { active: activate });
     showToast(`User ${activate ? 'activated' : 'deactivated'}`, 'success');
-    renderUsers();
+    await loadUsersList();
   } catch (error: any) {
     showToast('Failed to update user: ' + error.message, 'error');
   }
@@ -2035,9 +2110,452 @@ async function deleteUser(userId: number) {
   try {
     await window.posAPI.users.delete(userId);
     showToast('User deleted', 'success');
-    renderUsers();
+    await loadUsersList();
   } catch (error: any) {
     showToast('Failed to delete user: ' + error.message, 'error');
+  }
+}
+
+// Role and Permission Management Functions
+async function switchUserTab(tab: string) {
+  // Hide all tabs
+  document.querySelectorAll('.tab-content').forEach(el => {
+    (el as HTMLElement).style.display = 'none';
+  });
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.classList.remove('active');
+  });
+  
+  // Show selected tab
+  const tabElement = document.getElementById(`${tab}-tab`);
+  if (tabElement) {
+    tabElement.style.display = 'block';
+  }
+  
+  // Mark button as active
+  const tabBtn = document.querySelector(`.tab-btn[data-tab="${tab}"]`);
+  if (tabBtn) {
+    tabBtn.classList.add('active');
+  }
+  
+  // Load appropriate content
+  switch (tab) {
+    case 'users':
+      await loadUsersList();
+      break;
+    case 'roles':
+      await loadRolesList();
+      break;
+    case 'permissions':
+      await loadPermissionsList();
+      break;
+    case 'audit':
+      await loadAuditLog();
+      break;
+  }
+}
+
+async function loadUsersList() {
+  try {
+    const users = await window.posAPI.users.getAll();
+    const usersList = document.getElementById('users-list');
+    if (!usersList) return;
+    
+    // For each user, get their roles
+    const usersWithRoles = await Promise.all(users.map(async (user: any) => {
+      try {
+        const userWithRoles = await window.posAPI.users.getUserWithRoles(user.id);
+        return userWithRoles || user;
+      } catch {
+        return user;
+      }
+    }));
+    
+    usersList.innerHTML = `
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Username</th>
+            <th>Roles</th>
+            <th>Status</th>
+            <th>Created</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${usersWithRoles.map((user: any) => `
+            <tr>
+              <td>${user.username}</td>
+              <td>
+                ${user.roles ? user.roles.map((r: any) => 
+                  `<span class="badge badge-${r.is_system ? 'primary' : 'secondary'}">${r.name}</span>`
+                ).join(' ') : `<span class="badge badge-secondary">${user.role}</span>`}
+              </td>
+              <td><span class="badge badge-${user.active ? 'success' : 'danger'}">${user.active ? 'Active' : 'Inactive'}</span></td>
+              <td>${new Date(user.created_at).toLocaleDateString()}</td>
+              <td>
+                <button class="btn btn-sm" onclick="showUserPermissions(${user.id})">Permissions</button>
+                ${user.id !== currentUser?.id ? `
+                  <button class="btn btn-sm" onclick="toggleUserStatus(${user.id}, ${!user.active})">
+                    ${user.active ? 'Deactivate' : 'Activate'}
+                  </button>
+                  <button class="btn btn-sm btn-danger" onclick="deleteUser(${user.id})">Delete</button>
+                ` : '<span class="text-muted">Current User</span>'}
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+    
+    // Setup form handler
+    const form = document.getElementById('create-user-form');
+    if (form) {
+      form.removeEventListener('submit', handleCreateUser);
+      form.addEventListener('submit', handleCreateUser);
+    }
+  } catch (error: any) {
+    showToast('Failed to load users: ' + error.message, 'error');
+  }
+}
+
+async function loadRolesList() {
+  try {
+    const roles = await window.posAPI.roles.getAll();
+    const rolesList = document.getElementById('roles-list');
+    if (!rolesList) return;
+    
+    rolesList.innerHTML = `
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Role Name</th>
+            <th>Description</th>
+            <th>Type</th>
+            <th>Users</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${roles.map((role: any) => `
+            <tr>
+              <td><strong>${role.name}</strong></td>
+              <td>${role.description || '-'}</td>
+              <td><span class="badge badge-${role.is_system ? 'warning' : 'info'}">${role.is_system ? 'System' : 'Custom'}</span></td>
+              <td>
+                <button class="btn btn-sm" onclick="viewRoleUsers(${role.id})">View Users</button>
+              </td>
+              <td>
+                <button class="btn btn-sm btn-primary" onclick="showRolePermissions(${role.id})">Permissions</button>
+                ${!role.is_system ? `
+                  <button class="btn btn-sm" onclick="editRole(${role.id})">Edit</button>
+                  <button class="btn btn-sm btn-danger" onclick="deleteRole(${role.id})">Delete</button>
+                ` : ''}
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+    
+    // Setup role form handler
+    const roleForm = document.getElementById('create-role-form');
+    if (roleForm) {
+      roleForm.removeEventListener('submit', handleCreateRole);
+      roleForm.addEventListener('submit', handleCreateRole);
+    }
+  } catch (error: any) {
+    showToast('Failed to load roles: ' + error.message, 'error');
+  }
+}
+
+async function loadPermissionsList() {
+  try {
+    const permissions = await window.posAPI.permissions.getAll();
+    const permissionsList = document.getElementById('permissions-list');
+    if (!permissionsList) return;
+    
+    // Group permissions by resource
+    const groupedPermissions: { [key: string]: any[] } = {};
+    permissions.forEach((perm: any) => {
+      if (!groupedPermissions[perm.resource]) {
+        groupedPermissions[perm.resource] = [];
+      }
+      groupedPermissions[perm.resource].push(perm);
+    });
+    
+    permissionsList.innerHTML = `
+      <div class="permissions-grid">
+        ${Object.entries(groupedPermissions).map(([resource, perms]) => `
+          <div class="permission-group">
+            <h4>${resource.charAt(0).toUpperCase() + resource.slice(1)}</h4>
+            <ul class="permission-list">
+              ${perms.map((perm: any) => `
+                <li>
+                  <strong>${perm.action}</strong>
+                  ${perm.description ? `<br><small class="text-muted">${perm.description}</small>` : ''}
+                </li>
+              `).join('')}
+            </ul>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  } catch (error: any) {
+    showToast('Failed to load permissions: ' + error.message, 'error');
+  }
+}
+
+async function loadAuditLog() {
+  try {
+    const logs = await window.posAPI.permissions.getAuditLog();
+    const auditList = document.getElementById('audit-list');
+    if (!auditList) return;
+    
+    auditList.innerHTML = `
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>User</th>
+            <th>Action</th>
+            <th>Target</th>
+            <th>Details</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${logs.slice(0, 100).map((log: any) => {
+            const details = log.details_json ? JSON.parse(log.details_json) : {};
+            return `
+              <tr>
+                <td>${new Date(log.created_at).toLocaleString()}</td>
+                <td>${log.user_id}</td>
+                <td>${log.action.replace(/_/g, ' ')}</td>
+                <td>${log.target_type} #${log.target_id}</td>
+                <td>${JSON.stringify(details)}</td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    `;
+  } catch (error: any) {
+    showToast('Failed to load audit log: ' + error.message, 'error');
+  }
+}
+
+async function loadRolesForDropdown() {
+  try {
+    const roles = await window.posAPI.roles.getAll();
+    const roleSelect = document.getElementById('new-user-role') as HTMLSelectElement;
+    if (roleSelect) {
+      roleSelect.innerHTML = roles.map((role: any) => 
+        `<option value="${role.id}">${role.name}</option>`
+      ).join('');
+    }
+  } catch (error: any) {
+    console.error('Failed to load roles:', error);
+  }
+}
+
+function showCreateRoleModal() {
+  const modal = document.getElementById('create-role-modal');
+  if (modal) modal.style.display = 'block';
+}
+
+function closeCreateRoleModal() {
+  const modal = document.getElementById('create-role-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function handleCreateRole(e: Event) {
+  e.preventDefault();
+  try {
+    const name = (document.getElementById('new-role-name') as HTMLInputElement).value;
+    const description = (document.getElementById('new-role-description') as HTMLTextAreaElement).value;
+    
+    await window.posAPI.roles.create(name, description);
+    showToast('Role created successfully', 'success');
+    closeCreateRoleModal();
+    await loadRolesList();
+  } catch (error: any) {
+    showToast('Failed to create role: ' + error.message, 'error');
+  }
+}
+
+async function deleteRole(roleId: number) {
+  if (!confirm('Are you sure you want to delete this role?')) return;
+  
+  try {
+    await window.posAPI.roles.delete(roleId);
+    showToast('Role deleted', 'success');
+    await loadRolesList();
+  } catch (error: any) {
+    showToast('Failed to delete role: ' + error.message, 'error');
+  }
+}
+
+async function showUserPermissions(userId: number) {
+  const modal = document.getElementById('user-permissions-modal');
+  const content = document.getElementById('user-permissions-content');
+  if (!modal || !content) return;
+  
+  try {
+    const userWithRoles = await window.posAPI.users.getUserWithRoles(userId);
+    const allRoles = await window.posAPI.roles.getAll();
+    const allPermissions = await window.posAPI.permissions.getAll();
+    
+    if (!userWithRoles) return;
+    
+    content.innerHTML = `
+      <h4>User: ${userWithRoles.username}</h4>
+      
+      <div class="mb-3">
+        <h5>Assigned Roles</h5>
+        <div class="roles-list">
+          ${userWithRoles.roles?.map((role: any) => `
+            <div class="role-item">
+              <span class="badge badge-primary">${role.name}</span>
+              ${!role.is_system ? `
+                <button class="btn btn-sm btn-danger" onclick="removeUserRole(${userId}, ${role.id})">Remove</button>
+              ` : ''}
+            </div>
+          `).join('') || 'No roles assigned'}
+        </div>
+        
+        <div class="mt-2">
+          <select id="add-role-select">
+            ${allRoles.filter((r: any) => 
+              !userWithRoles.roles?.some((ur: any) => ur.id === r.id)
+            ).map((role: any) => 
+              `<option value="${role.id}">${role.name}</option>`
+            ).join('')}
+          </select>
+          <button class="btn btn-sm btn-primary" onclick="addUserRole(${userId})">Add Role</button>
+        </div>
+      </div>
+      
+      <div class="mb-3">
+        <h5>Effective Permissions</h5>
+        <div class="permissions-grid small">
+          ${userWithRoles.permissions?.map((perm: any) => 
+            `<span class="permission-badge">${perm.resource}:${perm.action}</span>`
+          ).join('') || 'No permissions'}
+        </div>
+      </div>
+      
+      <div class="mb-3">
+        <h5>Permission Overrides</h5>
+        ${userWithRoles.permission_overrides?.map((override: any) => `
+          <div class="override-item">
+            <span class="${override.granted ? 'text-success' : 'text-danger'}">
+              ${override.granted ? '✓ Granted' : '✗ Revoked'}: 
+              ${override.permission.resource}:${override.permission.action}
+            </span>
+            <button class="btn btn-sm" onclick="removePermissionOverride(${userId}, ${override.permission_id})">Remove</button>
+          </div>
+        `).join('') || 'No overrides'}
+      </div>
+    `;
+    
+    modal.style.display = 'block';
+  } catch (error: any) {
+    showToast('Failed to load user permissions: ' + error.message, 'error');
+  }
+}
+
+function closeUserPermissionsModal() {
+  const modal = document.getElementById('user-permissions-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function showRolePermissions(roleId: number) {
+  const modal = document.getElementById('role-permissions-modal');
+  const content = document.getElementById('role-permissions-content');
+  if (!modal || !content) return;
+  
+  try {
+    const role = await window.posAPI.roles.getById(roleId);
+    const allPermissions = await window.posAPI.permissions.getAll();
+    
+    if (!role) return;
+    
+    const rolePermissionIds = role.permissions?.map((p: any) => p.id) || [];
+    
+    content.innerHTML = `
+      <h4>Role: ${role.name}</h4>
+      <p>${role.description || 'No description'}</p>
+      
+      <div class="permissions-checklist">
+        ${allPermissions.map((perm: any) => `
+          <label class="permission-checkbox">
+            <input type="checkbox" 
+              ${rolePermissionIds.includes(perm.id) ? 'checked' : ''}
+              ${role.is_system ? 'disabled' : ''}
+              onchange="toggleRolePermission(${roleId}, ${perm.id}, this.checked)">
+            <span>${perm.resource}:${perm.action}</span>
+            <small class="text-muted">${perm.description || ''}</small>
+          </label>
+        `).join('')}
+      </div>
+    `;
+    
+    modal.style.display = 'block';
+  } catch (error: any) {
+    showToast('Failed to load role permissions: ' + error.message, 'error');
+  }
+}
+
+function closeRolePermissionsModal() {
+  const modal = document.getElementById('role-permissions-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function toggleRolePermission(roleId: number, permissionId: number, grant: boolean) {
+  try {
+    if (grant) {
+      await window.posAPI.roles.assignPermission(roleId, permissionId);
+    } else {
+      await window.posAPI.roles.removePermission(roleId, permissionId);
+    }
+    showToast('Permission updated', 'success');
+  } catch (error: any) {
+    showToast('Failed to update permission: ' + error.message, 'error');
+  }
+}
+
+async function addUserRole(userId: number) {
+  const select = document.getElementById('add-role-select') as HTMLSelectElement;
+  if (!select) return;
+  
+  const roleId = parseInt(select.value);
+  if (!roleId) return;
+  
+  try {
+    await window.posAPI.users.assignRole(userId, roleId);
+    showToast('Role assigned', 'success');
+    await showUserPermissions(userId);
+  } catch (error: any) {
+    showToast('Failed to assign role: ' + error.message, 'error');
+  }
+}
+
+async function removeUserRole(userId: number, roleId: number) {
+  try {
+    await window.posAPI.users.removeRole(userId, roleId);
+    showToast('Role removed', 'success');
+    await showUserPermissions(userId);
+  } catch (error: any) {
+    showToast('Failed to remove role: ' + error.message, 'error');
+  }
+}
+
+async function viewRoleUsers(roleId: number) {
+  try {
+    const users = await window.posAPI.roles.getRoleUsers(roleId);
+    alert(`Users with this role: ${users.map((u: any) => u.username).join(', ')}`);
+  } catch (error: any) {
+    showToast('Failed to load role users: ' + error.message, 'error');
   }
 }
 

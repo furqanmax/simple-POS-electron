@@ -24,6 +24,39 @@ const api: IPCApi = {
       ipcRenderer.invoke('users:create', username, password, role),
     update: (id: number, updates: any) => ipcRenderer.invoke('users:update', id, updates),
     delete: (id: number) => ipcRenderer.invoke('users:delete', id),
+    getUserWithRoles: (id: number) => ipcRenderer.invoke('users:getUserWithRoles', id),
+    assignRole: (userId: number, roleId: number) => ipcRenderer.invoke('users:assignRole', userId, roleId),
+    removeRole: (userId: number, roleId: number) => ipcRenderer.invoke('users:removeRole', userId, roleId),
+    getUserPermissions: (userId: number) => ipcRenderer.invoke('users:getUserPermissions', userId),
+    hasPermission: (userId: number, resource: string, action: string) => 
+      ipcRenderer.invoke('users:hasPermission', userId, resource, action),
+    grantPermission: (userId: number, permissionId: number) => 
+      ipcRenderer.invoke('users:grantPermission', userId, permissionId),
+    revokePermission: (userId: number, permissionId: number) => 
+      ipcRenderer.invoke('users:revokePermission', userId, permissionId),
+  },
+
+  roles: {
+    getAll: () => ipcRenderer.invoke('roles:getAll'),
+    getById: (id: number) => ipcRenderer.invoke('roles:getById', id),
+    create: (name: string, description: string) => ipcRenderer.invoke('roles:create', name, description),
+    update: (id: number, updates: any) => ipcRenderer.invoke('roles:update', id, updates),
+    delete: (id: number) => ipcRenderer.invoke('roles:delete', id),
+    getRolePermissions: (roleId: number) => ipcRenderer.invoke('roles:getRolePermissions', roleId),
+    assignPermission: (roleId: number, permissionId: number) => 
+      ipcRenderer.invoke('roles:assignPermission', roleId, permissionId),
+    removePermission: (roleId: number, permissionId: number) => 
+      ipcRenderer.invoke('roles:removePermission', roleId, permissionId),
+    getRoleUsers: (roleId: number) => ipcRenderer.invoke('roles:getRoleUsers', roleId),
+  },
+
+  permissions: {
+    getAll: () => ipcRenderer.invoke('permissions:getAll'),
+    getById: (id: number) => ipcRenderer.invoke('permissions:getById', id),
+    getByResource: (resource: string) => ipcRenderer.invoke('permissions:getByResource', resource),
+    checkPermission: (userId: number, resource: string, action: string) => 
+      ipcRenderer.invoke('permissions:checkPermission', userId, resource, action),
+    getAuditLog: (filters?: any) => ipcRenderer.invoke('permissions:getAuditLog', filters),
   },
 
   customers: {

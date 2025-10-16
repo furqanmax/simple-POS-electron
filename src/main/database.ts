@@ -47,9 +47,13 @@ export class DatabaseManager {
   private runMigrations(): void {
     const db = this.getDB();
     const currentVersion = db.pragma('user_version', { simple: true }) as number;
+    console.log(`[DB] Current database version: ${currentVersion}`);
 
     if (currentVersion === 0) {
       this.migration_v1(db);
+    }
+    if (currentVersion <= 1) {
+      this.migration_v2(db);
     }
     // Future migrations would go here
   }
@@ -294,6 +298,320 @@ export class DatabaseManager {
 
     db.pragma('user_version = 1');
     console.log('Migration v1 completed');
+  }
+
+  private migration_v2(db: Database.Database): void {
+    console.log('Running migration v2 - Adding roles and permissions...');
+    
+    // Check if migration has already been run
+    const rolesTable = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='roles'").get() as any;
+    if (rolesTable) {
+      console.log('Migration v2 already applied, skipping...');
+      db.pragma('user_version = 2');
+      return;
+    }
+
+    db.exec(`
+      -- Roles table (replacing the basic role field)
+      CREATE TABLE IF NOT EXISTS roles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE NOT NULL,
+        description TEXT,
+        is_system INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_roles_name ON roles(name);
+
+      -- Permissions table
+      CREATE TABLE IF NOT EXISTS permissions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        resource TEXT NOT NULL,
+        action TEXT NOT NULL,
+        description TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(resource, action)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_permissions_resource ON permissions(resource);
+      CREATE INDEX IF NOT EXISTS idx_permissions_action ON permissions(action);
+
+      -- Role permissions junction table
+      CREATE TABLE IF NOT EXISTS role_permissions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        role_id INTEGER NOT NULL,
+        permission_id INTEGER NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE,
+        FOREIGN KEY (permission_id) REFERENCES permissions(id) ON DELETE CASCADE,
+        UNIQUE(role_id, permission_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_role_permissions_role ON role_permissions(role_id);
+      CREATE INDEX IF NOT EXISTS idx_role_permissions_permission ON role_permissions(permission_id);
+
+      -- User roles junction table (for future multiple roles per user)
+      CREATE TABLE IF NOT EXISTS user_roles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        role_id INTEGER NOT NULL,
+        assigned_at TEXT NOT NULL DEFAULT (datetime('now')),
+        assigned_by INTEGER,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE,
+        FOREIGN KEY (assigned_by) REFERENCES users(id),
+        UNIQUE(user_id, role_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_user_roles_user ON user_roles(user_id);
+      CREATE INDEX IF NOT EXISTS idx_user_roles_role ON user_roles(role_id);
+
+      -- Permission overrides (user-specific permissions)
+      CREATE TABLE IF NOT EXISTS user_permissions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        permission_id INTEGER NOT NULL,
+        granted INTEGER NOT NULL DEFAULT 1, -- 1 for grant, 0 for revoke
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (permission_id) REFERENCES permissions(id) ON DELETE CASCADE,
+        UNIQUE(user_id, permission_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_user_permissions_user ON user_permissions(user_id);
+      CREATE INDEX IF NOT EXISTS idx_user_permissions_permission ON user_permissions(permission_id);
+
+      -- Audit log for permission changes
+      CREATE TABLE IF NOT EXISTS permission_audit_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        action TEXT NOT NULL,
+        target_type TEXT NOT NULL, -- 'role', 'user', 'permission'
+        target_id INTEGER NOT NULL,
+        details_json TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_permission_audit_log_user ON permission_audit_log(user_id);
+      CREATE INDEX IF NOT EXISTS idx_permission_audit_log_created ON permission_audit_log(created_at);
+    `);
+
+    // Insert default roles
+    db.prepare(`
+      INSERT OR IGNORE INTO roles (name, description, is_system)
+      VALUES 
+        ('admin', 'Administrator with full access', 1),
+        ('user', 'Standard user with limited access', 1),
+        ('manager', 'Manager with elevated permissions', 0),
+        ('cashier', 'Cashier with POS access only', 0),
+        ('viewer', 'Read-only access', 0)
+    `).run();
+
+    // Define all permissions
+    const permissions = [
+      // User management
+      { resource: 'users', action: 'create', description: 'Create new users' },
+      { resource: 'users', action: 'read', description: 'View users' },
+      { resource: 'users', action: 'update', description: 'Update user information' },
+      { resource: 'users', action: 'delete', description: 'Delete users' },
+      { resource: 'users', action: 'manage_roles', description: 'Assign/remove user roles' },
+      
+      // Role management
+      { resource: 'roles', action: 'create', description: 'Create new roles' },
+      { resource: 'roles', action: 'read', description: 'View roles' },
+      { resource: 'roles', action: 'update', description: 'Update role information' },
+      { resource: 'roles', action: 'delete', description: 'Delete roles' },
+      { resource: 'roles', action: 'manage_permissions', description: 'Assign/remove role permissions' },
+      
+      // Customer management
+      { resource: 'customers', action: 'create', description: 'Create new customers' },
+      { resource: 'customers', action: 'read', description: 'View customers' },
+      { resource: 'customers', action: 'update', description: 'Update customer information' },
+      { resource: 'customers', action: 'delete', description: 'Delete customers' },
+      { resource: 'customers', action: 'export', description: 'Export customer data' },
+      
+      // Order management
+      { resource: 'orders', action: 'create', description: 'Create new orders' },
+      { resource: 'orders', action: 'read', description: 'View orders' },
+      { resource: 'orders', action: 'update', description: 'Update orders' },
+      { resource: 'orders', action: 'delete', description: 'Delete orders' },
+      { resource: 'orders', action: 'cancel', description: 'Cancel orders' },
+      { resource: 'orders', action: 'finalize', description: 'Finalize orders' },
+      { resource: 'orders', action: 'refund', description: 'Process refunds' },
+      { resource: 'orders', action: 'view_all', description: 'View all users orders' },
+      
+      // Payment management
+      { resource: 'payments', action: 'create', description: 'Process payments' },
+      { resource: 'payments', action: 'read', description: 'View payments' },
+      { resource: 'payments', action: 'update', description: 'Update payment information' },
+      { resource: 'payments', action: 'delete', description: 'Delete payment records' },
+      { resource: 'payments', action: 'refund', description: 'Process payment refunds' },
+      
+      // Installment management
+      { resource: 'installments', action: 'create', description: 'Create installment plans' },
+      { resource: 'installments', action: 'read', description: 'View installment plans' },
+      { resource: 'installments', action: 'update', description: 'Update installment plans' },
+      { resource: 'installments', action: 'delete', description: 'Delete installment plans' },
+      { resource: 'installments', action: 'process_payment', description: 'Process installment payments' },
+      
+      // Template management
+      { resource: 'templates', action: 'create', description: 'Create invoice templates' },
+      { resource: 'templates', action: 'read', description: 'View templates' },
+      { resource: 'templates', action: 'update', description: 'Update templates' },
+      { resource: 'templates', action: 'delete', description: 'Delete templates' },
+      
+      // Settings management
+      { resource: 'settings', action: 'read', description: 'View settings' },
+      { resource: 'settings', action: 'update', description: 'Update settings' },
+      { resource: 'settings', action: 'manage_license', description: 'Manage license' },
+      
+      // Reports and analytics
+      { resource: 'reports', action: 'view_sales', description: 'View sales reports' },
+      { resource: 'reports', action: 'view_inventory', description: 'View inventory reports' },
+      { resource: 'reports', action: 'view_financial', description: 'View financial reports' },
+      { resource: 'reports', action: 'export', description: 'Export reports' },
+      
+      // Backup and restore
+      { resource: 'backup', action: 'create', description: 'Create backups' },
+      { resource: 'backup', action: 'restore', description: 'Restore from backup' },
+      { resource: 'backup', action: 'download', description: 'Download backups' },
+      
+      // Dashboard
+      { resource: 'dashboard', action: 'view', description: 'View dashboard' },
+      { resource: 'dashboard', action: 'view_all_stats', description: 'View all statistics' }
+    ];
+
+    // Insert all permissions
+    const insertPermission = db.prepare(`
+      INSERT OR IGNORE INTO permissions (resource, action, description)
+      VALUES (?, ?, ?)
+    `);
+
+    for (const perm of permissions) {
+      insertPermission.run(perm.resource, perm.action, perm.description);
+    }
+
+    // Get role IDs
+    const adminRole = db.prepare('SELECT id FROM roles WHERE name = ?').get('admin') as any;
+    const userRole = db.prepare('SELECT id FROM roles WHERE name = ?').get('user') as any;
+    const managerRole = db.prepare('SELECT id FROM roles WHERE name = ?').get('manager') as any;
+    const cashierRole = db.prepare('SELECT id FROM roles WHERE name = ?').get('cashier') as any;
+    const viewerRole = db.prepare('SELECT id FROM roles WHERE name = ?').get('viewer') as any;
+
+    // Admin gets all permissions
+    const allPermissions = db.prepare('SELECT id FROM permissions').all() as any[];
+    const insertRolePermission = db.prepare(`
+      INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
+      VALUES (?, ?)
+    `);
+
+    for (const perm of allPermissions) {
+      insertRolePermission.run(adminRole.id, perm.id);
+    }
+
+    // User role permissions (basic user)
+    const userPermissions = [
+      'orders:create', 'orders:read', 'orders:update',
+      'customers:create', 'customers:read', 'customers:update',
+      'payments:create', 'payments:read',
+      'templates:read',
+      'settings:read',
+      'dashboard:view'
+    ];
+
+    for (const permString of userPermissions) {
+      const [resource, action] = permString.split(':');
+      const perm = db.prepare('SELECT id FROM permissions WHERE resource = ? AND action = ?').get(resource, action) as any;
+      if (perm) {
+        insertRolePermission.run(userRole.id, perm.id);
+      }
+    }
+
+    // Manager role permissions
+    const managerPermissions = [
+      'orders:*', 'customers:*', 'payments:*', 'installments:*',
+      'templates:*', 'reports:*', 'dashboard:*', 'backup:create',
+      'users:read', 'users:update'
+    ];
+
+    for (const permString of managerPermissions) {
+      if (permString.includes('*')) {
+        const resource = permString.split(':')[0];
+        const resourcePerms = db.prepare('SELECT id FROM permissions WHERE resource = ?').all(resource) as any[];
+        for (const perm of resourcePerms) {
+          insertRolePermission.run(managerRole.id, perm.id);
+        }
+      } else {
+        const [resource, action] = permString.split(':');
+        const perm = db.prepare('SELECT id FROM permissions WHERE resource = ? AND action = ?').get(resource, action) as any;
+        if (perm) {
+          insertRolePermission.run(managerRole.id, perm.id);
+        }
+      }
+    }
+
+    // Cashier role permissions
+    const cashierPermissions = [
+      'orders:create', 'orders:read', 'orders:finalize',
+      'customers:create', 'customers:read',
+      'payments:create', 'payments:read',
+      'dashboard:view'
+    ];
+
+    for (const permString of cashierPermissions) {
+      const [resource, action] = permString.split(':');
+      const perm = db.prepare('SELECT id FROM permissions WHERE resource = ? AND action = ?').get(resource, action) as any;
+      if (perm) {
+        insertRolePermission.run(cashierRole.id, perm.id);
+      }
+    }
+
+    // Viewer role permissions (read-only)
+    const viewerPermissions = db.prepare('SELECT id FROM permissions WHERE action = ?').all('read') as any[];
+    for (const perm of viewerPermissions) {
+      insertRolePermission.run(viewerRole.id, perm.id);
+    }
+    // Also add view permissions
+    const viewPermissions = db.prepare('SELECT id FROM permissions WHERE action LIKE ?').all('view%') as any[];
+    for (const perm of viewPermissions) {
+      insertRolePermission.run(viewerRole.id, perm.id);
+    }
+
+    // Migrate existing users to use the new role system
+    try {
+      const users = db.prepare('SELECT id, role FROM users').all() as any[];
+      const insertUserRole = db.prepare(`
+        INSERT OR IGNORE INTO user_roles (user_id, role_id)
+        VALUES (?, ?)
+      `);
+
+      for (const user of users) {
+        let roleId;
+        switch (user.role) {
+          case 'admin':
+            roleId = adminRole.id;
+            break;
+          case 'user':
+            roleId = userRole.id;
+            break;
+          case 'guest':
+            roleId = viewerRole.id;
+            break;
+          default:
+            roleId = userRole.id;
+        }
+        if (roleId) {
+          insertUserRole.run(user.id, roleId);
+        }
+      }
+    } catch (e) {
+      console.log('Note: Could not migrate existing users (might be fresh install):', e);
+    }
+
+    db.pragma('user_version = 2');
+    console.log('Migration v2 completed - Roles and permissions system added');
   }
 
   private ensureSeedData(): void {

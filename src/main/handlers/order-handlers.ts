@@ -2,12 +2,27 @@ import { IpcMain } from 'electron';
 import { dbManager } from '../database';
 import { Order, OrderItem, OrderWithItems, Customer, User, InvoiceTemplate } from '../../shared/types';
 import { getCurrentUser } from './auth-handlers';
+import { PermissionService } from '../services/permission-service';
 
 export function registerOrderHandlers(ipcMain: IpcMain): void {
   ipcMain.handle('orders:getAll', async (_, filters?: { startDate?: string; endDate?: string; userId?: number; customerId?: number }): Promise<OrderWithItems[]> => {
+    // Check if user can view orders
+    const currentUser = getCurrentUser();
+    if (!currentUser) {
+      throw new Error('Unauthorized: Not logged in');
+    }
+    
+    const canViewAllOrders = await PermissionService.canPerform('orders', 'view_all');
+    
     const db = dbManager.getDB();
     let query = 'SELECT * FROM orders WHERE 1=1';
     const params: any[] = [];
+    
+    // If user cannot view all orders, filter by their own orders
+    if (!canViewAllOrders) {
+      query += ' AND user_id = ?';
+      params.push(currentUser.id);
+    }
     
     if (filters?.startDate) {
       query += ' AND created_at >= ?';
@@ -69,6 +84,9 @@ export function registerOrderHandlers(ipcMain: IpcMain): void {
   });
 
   ipcMain.handle('orders:create', async (_, orderData: Omit<Order, 'id' | 'created_at'>, items: OrderItem[]): Promise<Order> => {
+    // Check permission to create orders
+    await PermissionService.requirePermission('orders', 'create');
+    
     const db = dbManager.getDB();
     const user = getCurrentUser();
     
@@ -107,11 +125,14 @@ export function registerOrderHandlers(ipcMain: IpcMain): void {
   });
 
   ipcMain.handle('orders:finalize', async (_, orderId: number, templateId?: number): Promise<void> => {
+    // Check permission to finalize orders
+    await PermissionService.requirePermission('orders', 'finalize');
+    
     const db = dbManager.getDB();
     const user = getCurrentUser();
     
-    if (!user || user.role === 'guest') {
-      throw new Error('Unauthorized to finalize orders');
+    if (!user) {
+      throw new Error('Not authenticated');
     }
     
     // Get order with all details

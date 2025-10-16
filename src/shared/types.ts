@@ -2,6 +2,71 @@
 
 export type UserRole = 'admin' | 'user' | 'guest';
 
+// New Role and Permission types
+export interface Role {
+  id: number;
+  name: string;
+  description?: string;
+  is_system: boolean;
+  created_at: string;
+  updated_at: string;
+  permissions?: Permission[];
+}
+
+export interface Permission {
+  id: number;
+  resource: string;
+  action: string;
+  description?: string;
+  created_at: string;
+}
+
+export interface RolePermission {
+  id: number;
+  role_id: number;
+  permission_id: number;
+  created_at: string;
+}
+
+export interface UserRoleAssignment {
+  id: number;
+  user_id: number;
+  role_id: number;
+  assigned_at: string;
+  assigned_by?: number;
+  role?: Role;
+}
+
+export interface UserPermissionOverride {
+  id: number;
+  user_id: number;
+  permission_id: number;
+  granted: boolean;
+  created_at: string;
+  permission?: Permission;
+}
+
+export interface PermissionAuditLog {
+  id: number;
+  user_id: number;
+  action: string;
+  target_type: 'role' | 'user' | 'permission';
+  target_id: number;
+  details_json?: string;
+  created_at: string;
+}
+
+export type PermissionCheck = {
+  resource: string;
+  action: string;
+};
+
+export interface UserWithRoles extends User {
+  roles?: Role[];
+  permissions?: Permission[];
+  permission_overrides?: UserPermissionOverride[];
+}
+
 export type OrderStatus = 'draft' | 'finalized' | 'cancelled';
 
 export type InstallmentStatus = 'pending' | 'paid' | 'overdue';
@@ -256,6 +321,35 @@ export interface IPCApi {
     create: (username: string, password: string, role: UserRole) => Promise<User>;
     update: (id: number, updates: Partial<User>) => Promise<void>;
     delete: (id: number) => Promise<void>;
+    getUserWithRoles: (id: number) => Promise<UserWithRoles | null>;
+    assignRole: (userId: number, roleId: number) => Promise<void>;
+    removeRole: (userId: number, roleId: number) => Promise<void>;
+    getUserPermissions: (userId: number) => Promise<Permission[]>;
+    hasPermission: (userId: number, resource: string, action: string) => Promise<boolean>;
+    grantPermission: (userId: number, permissionId: number) => Promise<void>;
+    revokePermission: (userId: number, permissionId: number) => Promise<void>;
+  };
+
+  // Roles
+  roles: {
+    getAll: () => Promise<Role[]>;
+    getById: (id: number) => Promise<Role | null>;
+    create: (name: string, description: string) => Promise<Role>;
+    update: (id: number, updates: Partial<Role>) => Promise<void>;
+    delete: (id: number) => Promise<void>;
+    getRolePermissions: (roleId: number) => Promise<Permission[]>;
+    assignPermission: (roleId: number, permissionId: number) => Promise<void>;
+    removePermission: (roleId: number, permissionId: number) => Promise<void>;
+    getRoleUsers: (roleId: number) => Promise<User[]>;
+  };
+
+  // Permissions
+  permissions: {
+    getAll: () => Promise<Permission[]>;
+    getById: (id: number) => Promise<Permission | null>;
+    getByResource: (resource: string) => Promise<Permission[]>;
+    checkPermission: (userId: number, resource: string, action: string) => Promise<boolean>;
+    getAuditLog: (filters?: { userId?: number; startDate?: string; endDate?: string }) => Promise<PermissionAuditLog[]>;
   };
 
   // Customers
