@@ -1099,6 +1099,19 @@ async function renderSettings() {
       <div id="settings-form">Loading...</div>
     </div>
     
+    <div class="card mb-4">
+      <div class="card-header">
+        <h3 class="card-title">License Management</h3>
+      </div>
+      <div id="license-management">
+        <div id="license-info-display">Loading license information...</div>
+        <div style="margin-top: 20px;">
+          <button class="btn btn-primary" onclick="showLicenseActivation()">Activate New License</button>
+          <button class="btn btn-secondary" onclick="importLicenseFile()">Import License File</button>
+          <button class="btn btn-secondary" onclick="checkLicenseUpdates()">Check for Updates</button>
+        </div>
+      </div>
+    </div>
 
     <div class="card">
       <div class="card-header">
@@ -1107,6 +1120,7 @@ async function renderSettings() {
       <div>
         <p id="last-backup-time">Last backup: Never</p>
         <button class="btn btn-primary" onclick="createBackup()">Create Backup Now</button>
+        <button class="btn btn-secondary" onclick="restoreBackup()" style="margin-left: 10px;">Restore from Backup</button>
       </div>
     </div>
   `;
@@ -1114,6 +1128,35 @@ async function renderSettings() {
   try {
     const settings = await window.posAPI.settings.get();
     const lastBackup = await window.posAPI.backups.getLastBackupTime();
+    
+    // Load license info
+    const licenseInfo = await window.posAPI.license.getInfo();
+    const licenseDisplay = document.getElementById('license-info-display');
+    if (licenseDisplay && licenseInfo) {
+      licenseDisplay.innerHTML = `
+        <div class="license-details">
+          <p><strong>Plan:</strong> ${licenseInfo.plan}</p>
+          <p><strong>Status:</strong> <span class="${licenseInfo.isValid ? 'text-success' : 'text-danger'}">${licenseInfo.status}</span></p>
+          <p><strong>Expires:</strong> ${licenseInfo.expiryDate ? new Date(licenseInfo.expiryDate).toLocaleDateString() : 'N/A'}</p>
+          <p><strong>Days Remaining:</strong> ${licenseInfo.daysRemaining}</p>
+          ${licenseInfo.status === 'grace' ? `<p class="text-warning"><strong>Grace Period:</strong> ${licenseInfo.graceRemaining} days</p>` : ''}
+          
+          <details style="margin-top: 10px;">
+            <summary style="cursor: pointer;"><strong>Features</strong></summary>
+            <ul style="font-size: 0.9em; margin-top: 10px;">
+              <li>Max Users: ${licenseInfo.features.maxUsers === -1 ? 'Unlimited' : licenseInfo.features.maxUsers}</li>
+              <li>Max Orders: ${licenseInfo.features.maxOrders === -1 ? 'Unlimited' : licenseInfo.features.maxOrders}</li>
+              <li>Export Data: ${licenseInfo.features.canExport ? '✓' : '✗'}</li>
+              <li>Multiple Templates: ${licenseInfo.features.multipleTemplates ? '✓' : '✗'}</li>
+              <li>Advanced Reports: ${licenseInfo.features.advancedReports ? '✓' : '✗'}</li>
+              <li>Support: ${licenseInfo.features.phoneSupport ? 'Phone + Email' : licenseInfo.features.emailSupport ? 'Email Only' : 'None'}</li>
+            </ul>
+          </details>
+        </div>
+      `;
+      // Update global license info
+      globalLicenseInfo = licenseInfo;
+    }
     
     const settingsForm = document.getElementById('settings-form');
     if (settingsForm) {
@@ -1173,6 +1216,27 @@ async function createBackup() {
   }
 }
 
+async function restoreBackup() {
+  const warning = `WARNING: Restoring a backup will replace ALL current data!\n\nThis action cannot be undone.\n\nDo you want to continue?`;
+  
+  if (!confirm(warning)) return;
+  
+  const backupFile = prompt('Enter the full path to the backup file:');
+  if (!backupFile) return;
+  
+  try {
+    await window.posAPI.backups.restore(backupFile);
+    showToast('Backup restored successfully. The application will reload.', 'success');
+    
+    // Reload the application after a short delay
+    setTimeout(() => {
+      location.reload();
+    }, 2000);
+  } catch (error: any) {
+    showToast('Restore failed: ' + error.message, 'error');
+  }
+}
+
 // Login functionality
 async function showLoginPage() {
   const app = document.getElementById('app-page');
@@ -1181,26 +1245,83 @@ async function showLoginPage() {
   app.innerHTML = `
     <div class="login-container">
       <div class="login-card">
-        <h1 class="login-title">SimplePOS Login</h1>
-        <form id="login-form">
+        <div class="login-logo">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+            <line x1="8" y1="21" x2="16" y2="21"></line>
+            <line x1="12" y1="17" x2="12" y2="21"></line>
+          </svg>
+        </div>
+        <h1 class="login-title">Welcome back</h1>
+        <p class="login-subtitle">Enter your credentials to access SimplePOS</p>
+        <form id="login-form" class="login-form">
           <div class="form-group">
-            <label>Username</label>
-            <input type="text" id="login-username" required autofocus>
+            <label for="login-username" class="form-label">Username</label>
+            <div class="input-wrapper">
+              <svg class="input-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                <circle cx="12" cy="7" r="4"></circle>
+              </svg>
+              <input type="text" id="login-username" class="form-input with-icon" placeholder="Enter username" required autofocus>
+            </div>
           </div>
           <div class="form-group">
-            <label>Password</label>
-            <input type="password" id="login-password" required>
+            <label for="login-password" class="form-label">Password</label>
+            <div class="input-wrapper">
+              <svg class="input-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+              </svg>
+              <input type="password" id="login-password" class="form-input with-icon" placeholder="Enter password" required>
+              <button type="button" class="password-toggle" onclick="togglePassword()">
+                <svg id="eye-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                  <circle cx="12" cy="12" r="3"></circle>
+                </svg>
+              </button>
+            </div>
           </div>
-          <button type="submit" class="btn btn-primary btn-block">Login</button>
+          <button type="submit" class="btn btn-primary btn-block">
+            Sign in
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+          </button>
         </form>
-        <p class="login-hint">Default: admin/admin</p>
+        <div class="login-footer">
+          <p class="login-hint">Demo credentials: admin / admin</p>
+        </div>
       </div>
+      <div class="login-bg-pattern"></div>
     </div>
   `;
   
   const form = document.getElementById('login-form');
   if (form) {
     form.addEventListener('submit', handleLogin);
+  }
+}
+
+function togglePassword() {
+  const passwordInput = document.getElementById('login-password') as HTMLInputElement;
+  const eyeIcon = document.getElementById('eye-icon');
+  
+  if (passwordInput.type === 'password') {
+    passwordInput.type = 'text';
+    if (eyeIcon) {
+      eyeIcon.innerHTML = `
+        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+        <line x1="1" y1="1" x2="23" y2="23"></line>
+      `;
+    }
+  } else {
+    passwordInput.type = 'password';
+    if (eyeIcon) {
+      eyeIcon.innerHTML = `
+        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+        <circle cx="12" cy="12" r="3"></circle>
+      `;
+    }
   }
 }
 
@@ -1237,6 +1358,9 @@ function showMainApp() {
       </div>
       <div class="header-right">
         <span class="user-info">User: ${currentUser?.username} (${currentUser?.role})</span>
+        <span id="license-status" class="license-status" style="margin: 0 10px; font-size: 0.9em;">
+          ${globalLicenseInfo ? `${globalLicenseInfo.plan}: ${globalLicenseInfo.daysRemaining > 0 ? globalLicenseInfo.daysRemaining + ' days' : 'Expired'}` : ''}
+        </span>
         <button class="btn btn-sm" onclick="logout()">Logout</button>
       </div>
     </header>
@@ -1244,35 +1368,85 @@ function showMainApp() {
     <!-- Navigation -->
     <nav class="app-nav">
       <a href="#dashboard" class="nav-item active" data-page="dashboard" data-role="all">
-        <span class="nav-icon">📊</span>
+        <span class="nav-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7"></rect>
+            <rect x="14" y="3" width="7" height="7"></rect>
+            <rect x="14" y="14" width="7" height="7"></rect>
+            <rect x="3" y="14" width="7" height="7"></rect>
+          </svg>
+        </span>
         <span class="nav-label">Dashboard</span>
       </a>
       <a href="#pos" class="nav-item" data-page="pos" data-role="all">
-        <span class="nav-icon">🛒</span>
+        <span class="nav-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="9" cy="21" r="1"></circle>
+            <circle cx="20" cy="21" r="1"></circle>
+            <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
+          </svg>
+        </span>
         <span class="nav-label">POS</span>
       </a>
       <a href="#history" class="nav-item" data-page="history" data-role="admin,user">
-        <span class="nav-icon">📋</span>
+        <span class="nav-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+            <polyline points="10 9 9 9 8 9"></polyline>
+          </svg>
+        </span>
         <span class="nav-label">History</span>
       </a>
       <a href="#customers" class="nav-item" data-page="customers" data-role="all">
-        <span class="nav-icon">👥</span>
+        <span class="nav-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+            <circle cx="9" cy="7" r="4"></circle>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+          </svg>
+        </span>
         <span class="nav-label">Customers</span>
       </a>
       <a href="#templates" class="nav-item" data-page="templates" data-role="admin">
-        <span class="nav-icon">📄</span>
+        <span class="nav-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="9" y1="9" x2="15" y2="9"></line>
+            <line x1="9" y1="13" x2="15" y2="13"></line>
+            <line x1="9" y1="17" x2="13" y2="17"></line>
+          </svg>
+        </span>
         <span class="nav-label">Templates</span>
       </a>
       <a href="#installments" class="nav-item" data-page="installments" data-role="admin,user">
-        <span class="nav-icon">💳</span>
+        <span class="nav-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect>
+            <line x1="1" y1="10" x2="23" y2="10"></line>
+          </svg>
+        </span>
         <span class="nav-label">Installments</span>
       </a>
       <a href="#users" class="nav-item" data-page="users" data-role="admin">
-        <span class="nav-icon">👤</span>
+        <span class="nav-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+            <circle cx="12" cy="7" r="4"></circle>
+          </svg>
+        </span>
         <span class="nav-label">Users</span>
       </a>
       <a href="#settings" class="nav-item" data-page="settings" data-role="admin">
-        <span class="nav-icon">⚙️</span>
+        <span class="nav-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M12 1v6m0 6v6m4.22-13.22l4.24 4.24M1.54 1.54l4.24 4.24M20.46 20.46l-4.24-4.24M1.54 20.46l4.24-4.24"></path>
+          </svg>
+        </span>
         <span class="nav-label">Settings</span>
       </a>
     </nav>
@@ -1321,6 +1495,9 @@ async function logout() {
   showToast('Logged out successfully', 'info');
 }
 
+// Global license info
+let globalLicenseInfo: any = null;
+
 // Initialize app
 document.addEventListener('DOMContentLoaded', async () => {
   console.log('[RENDERER] App initializing...');
@@ -1334,8 +1511,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (user) {
       currentUser = user;
       isLoggedIn = true;
-      showMainApp();
-      navigateTo('dashboard');
+      
+      // Check license before showing main app
+      const licenseValid = await checkLicense();
+      if (!licenseValid) {
+        showLicenseExpiredPage();
+      } else {
+        showMainApp();
+        navigateTo('dashboard');
+        startLicenseMonitoring();
+      }
     } else {
       showLoginPage();
     }
@@ -1347,6 +1532,210 @@ document.addEventListener('DOMContentLoaded', async () => {
   console.log('[RENDERER] App initialized');
 });
 
+// Check license validity
+async function checkLicense(): Promise<boolean> {
+  try {
+    globalLicenseInfo = await window.posAPI.license.getInfo();
+    
+    if (!globalLicenseInfo.isValid) {
+      if (globalLicenseInfo.status === 'tampered') {
+        alert('License validation failed: System clock manipulation detected.\n\nPlease correct your system time and restart the application.');
+        return false;
+      }
+      return false;
+    }
+    
+    // Show warnings for expiring licenses
+    if (globalLicenseInfo.daysRemaining <= 7 && globalLicenseInfo.daysRemaining > 0) {
+      showToast(`⚠️ License expires in ${globalLicenseInfo.daysRemaining} days`, 'warning');
+    }
+    
+    // Show grace period warning
+    if (globalLicenseInfo.status === 'grace') {
+      showToast(`⚠️ License expired! ${globalLicenseInfo.graceRemaining} days grace period remaining`, 'warning');
+    }
+    
+    return true;
+  } catch (error: any) {
+    console.error('License check failed:', error);
+    return false;
+  }
+}
+
+// Start periodic license monitoring
+function startLicenseMonitoring() {
+  // Check every hour
+  setInterval(async () => {
+    const valid = await checkLicense();
+    if (!valid) {
+      showLicenseExpiredPage();
+    }
+  }, 60 * 60 * 1000);
+  
+  // Update license display every minute
+  setInterval(() => {
+    updateLicenseDisplay();
+  }, 60 * 1000);
+}
+
+// Show license expired page
+function showLicenseExpiredPage() {
+  const app = document.getElementById('app-page');
+  if (!app) return;
+  
+  app.innerHTML = `
+    <div class="license-expired-container">
+      <div class="license-card">
+        <h1 class="text-danger">License ${globalLicenseInfo?.status === 'grace' ? 'Grace Period' : 'Expired'}</h1>
+        <div class="license-message">
+          ${globalLicenseInfo ? `
+            <p>${globalLicenseInfo.message}</p>
+            ${globalLicenseInfo.status === 'grace' ? 
+              `<p class="text-warning">Grace period: ${globalLicenseInfo.graceRemaining} days remaining</p>` :
+              '<p class="text-danger">Your license has fully expired.</p>'
+            }
+          ` : '<p>Unable to verify license status.</p>'}
+        </div>
+        
+        <div class="license-actions">
+          <button class="btn btn-primary" onclick="showLicenseActivation()">Activate License</button>
+          <button class="btn btn-secondary" onclick="importLicenseFile()">Import License File</button>
+          ${globalLicenseInfo?.status === 'grace' ? 
+            '<button class="btn btn-warning" onclick="continueWithGrace()">Continue (Limited)</button>' : ''
+          }
+        </div>
+        
+        <div class="license-help">
+          <p>Need help? Contact support at support@yourbrand.com</p>
+          <button class="btn btn-link" onclick="exportLicenseDebug()">Export Debug Info</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// Update license display in UI
+function updateLicenseDisplay() {
+  const licenseStatus = document.getElementById('license-status');
+  if (!licenseStatus || !globalLicenseInfo) return;
+  
+  const statusClass = globalLicenseInfo.isValid ? 
+    (globalLicenseInfo.daysRemaining <= 7 ? 'text-warning' : 'text-success') : 
+    'text-danger';
+  
+  licenseStatus.className = `license-status ${statusClass}`;
+  licenseStatus.textContent = globalLicenseInfo.message;
+}
+
+// License Management Functions
+async function showLicenseActivation() {
+  const modal = document.createElement('div');
+  modal.className = 'modal';
+  modal.style.display = 'block';
+  modal.innerHTML = `
+    <div class="modal-content" style="max-width: 500px;">
+      <div class="modal-header">
+        <h3>Activate License</h3>
+        <button onclick="this.closest('.modal').remove()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Enter License Key:</label>
+          <textarea id="license-key-input" class="form-control" rows="4" 
+            placeholder="Paste your license key here..."></textarea>
+        </div>
+        <button class="btn btn-primary" onclick="activateLicenseKey()">Activate</button>
+        <button class="btn btn-secondary" onclick="this.closest('.modal').remove()">Cancel</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
+
+async function activateLicenseKey() {
+  const keyInput = document.getElementById('license-key-input') as HTMLTextAreaElement;
+  if (!keyInput) return;
+  
+  const licenseKey = keyInput.value.trim();
+  if (!licenseKey) {
+    showToast('Please enter a license key', 'error');
+    return;
+  }
+  
+  try {
+    const result = await window.posAPI.license.activate(licenseKey);
+    
+    if (result.success) {
+      showToast('License activated successfully!', 'success');
+      document.querySelector('.modal')?.remove();
+      
+      // Refresh license and reload app
+      const valid = await checkLicense();
+      if (valid) {
+        showMainApp();
+        navigateTo('dashboard');
+        startLicenseMonitoring();
+      }
+    } else {
+      showToast('Activation failed: ' + result.message, 'error');
+    }
+  } catch (error: any) {
+    showToast('Activation error: ' + error.message, 'error');
+  }
+}
+
+async function importLicenseFile() {
+  try {
+    const result = await window.posAPI.license.importFromFile();
+    
+    if (result.success) {
+      showToast('License imported successfully!', 'success');
+      
+      // Refresh license and reload app
+      const valid = await checkLicense();
+      if (valid) {
+        showMainApp();
+        navigateTo('dashboard');
+        startLicenseMonitoring();
+      }
+    } else {
+      showToast('Import failed: ' + result.message, 'error');
+    }
+  } catch (error: any) {
+    showToast('Import error: ' + error.message, 'error');
+  }
+}
+
+async function exportLicenseDebug() {
+  try {
+    await window.posAPI.license.exportDebug();
+    showToast('Debug info exported to desktop', 'success');
+  } catch (error: any) {
+    showToast('Export failed: ' + error.message, 'error');
+  }
+}
+
+async function continueWithGrace() {
+  showMainApp();
+  navigateTo('dashboard');
+  startLicenseMonitoring();
+  showToast('⚠️ Running in grace period with limited features', 'warning');
+}
+
+async function checkLicenseUpdates() {
+  try {
+    const result = await window.posAPI.license.checkUpdates();
+    
+    if (result.available) {
+      showToast(result.message, 'warning');
+    } else {
+      showToast(result.message, 'success');
+    }
+  } catch (error: any) {
+    showToast('Failed to check for updates: ' + error.message, 'error');
+  }
+}
+
 // Make functions globally available
 (window as any).printOrder = printOrder;
 (window as any).removeItem = removeItem;
@@ -1355,7 +1744,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 (window as any).finalizeOrder = finalizeOrder;
 (window as any).showAddCustomerModal = showAddCustomerModal;
 (window as any).createBackup = createBackup;
+(window as any).restoreBackup = restoreBackup;
 (window as any).logout = logout;
+(window as any).showLicenseActivation = showLicenseActivation;
+(window as any).activateLicenseKey = activateLicenseKey;
+(window as any).importLicenseFile = importLicenseFile;
+(window as any).exportLicenseDebug = exportLicenseDebug;
+(window as any).continueWithGrace = continueWithGrace;
+(window as any).checkLicenseUpdates = checkLicenseUpdates;
+(window as any).togglePassword = togglePassword;
 
 
 // Customers: create
@@ -1892,7 +2289,10 @@ async function createInstallmentPlan() {
       num_installments: numInstallments,
       frequency: frequency as any,
       start_date: new Date().toISOString().split('T')[0],
-      status: 'active'
+      down_payment: downPayment,
+      fee: 0,
+      count: numInstallments,
+      rounding_mode: 'bankers'
     } as any);
     
     showToast('Installment plan created successfully', 'success');

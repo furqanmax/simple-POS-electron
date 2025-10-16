@@ -1,86 +1,140 @@
-import { IpcMain } from 'electron';
+import { IpcMain, dialog, app } from 'electron';
 import { dbManager } from '../database';
 import { LicenseState, LicensePlan } from '../../shared/types';
-
-function addDays(date: Date, days: number): Date {
-  const d = new Date(date);
-  d.setDate(d.getDate() + days);
-  return d;
-}
-
-function addMonths(date: Date, months: number): Date {
-  const d = new Date(date);
-  d.setMonth(d.getMonth() + months);
-  return d;
-}
+import { licenseService, LicenseInfo } from '../services/license-service';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export function registerLicenseHandlers(ipcMain: IpcMain): void {
+  // Get full license information
+  ipcMain.handle('license:getInfo', async (): Promise<LicenseInfo> => {
+    return await licenseService.getLicenseInfo();
+  });
+
+  // Get license state (backward compatibility)
   ipcMain.handle('license:getState', async (): Promise<LicenseState | null> => {
     const db = dbManager.getDB();
     const row = db.prepare('SELECT * FROM license_state WHERE id = 1').get() as LicenseState | undefined;
     return row || null;
   });
 
-  ipcMain.handle('license:activate', async (_evt, token: string): Promise<void> => {
-    const db = dbManager.getDB();
-
-    // Naive, offline-first activation: infer plan duration by token keyword if present
-    let plan: LicensePlan = 'Monthly';
-    if (/annual/i.test(token)) plan = 'Annual';
-    else if (/quarter/i.test(token)) plan = 'Quarterly';
-
-    let expiry: Date = new Date();
-    if (plan === 'Annual') expiry = addMonths(expiry, 12);
-    else if (plan === 'Quarterly') expiry = addMonths(expiry, 3);
-    else expiry = addMonths(expiry, 1);
-
-    db.prepare(`
-      INSERT INTO license_state (id, plan, expiry, last_verified_at, signed_token_blob, last_seen_monotonic)
-      VALUES (1, ?, ?, datetime('now'), ?, 0)
-      ON CONFLICT(id) DO UPDATE SET
-        plan = excluded.plan,
-        expiry = excluded.expiry,
-        last_verified_at = excluded.last_verified_at,
-        signed_token_blob = excluded.signed_token_blob
-    `).run(plan, expiry.toISOString(), token);
+  // Activate license with new key
+  ipcMain.handle('license:activate', async (_evt, licenseKey: string): Promise<{ success: boolean; message: string }> => {
+    try {
+      const result = await licenseService.activateLicense(licenseKey);
+      
+      if (result.success) {
+        // Force refresh license info
+        await licenseService.getLicenseInfo(true);
+      }
+      
+      return result;
+    } catch (error: any) {
+      return { success: false, message: 'Failed to activate license: ' + error.message };
+    }
   });
 
+  // Deactivate license and revert to trial
   ipcMain.handle('license:deactivate', async (): Promise<void> => {
-    const db = dbManager.getDB();
-    const expiry = addDays(new Date(), 30);
-    db.prepare(`
-      INSERT INTO license_state (id, plan, expiry, last_verified_at, signed_token_blob, last_seen_monotonic)
-      VALUES (1, 'Trial', ?, datetime('now'), NULL, 0)
-      ON CONFLICT(id) DO UPDATE SET
-        plan = 'Trial',
-        expiry = excluded.expiry,
-        last_verified_at = excluded.last_verified_at,
-        signed_token_blob = NULL
-    `).run(expiry.toISOString());
+    licenseService.startTrial();
   });
 
+  // Verify license is valid
   ipcMain.handle('license:verify', async (): Promise<boolean> => {
-    const db = dbManager.getDB();
-    const row = db.prepare('SELECT expiry FROM license_state WHERE id = 1').get() as any;
-    const now = new Date();
-    let ok = true;
-    if (row && row.expiry) {
-      ok = new Date(row.expiry) > now;
-    }
-    db.prepare('UPDATE license_state SET last_verified_at = datetime(\'now\') WHERE id = 1').run();
-    return ok;
+    const info = await licenseService.getLicenseInfo();
+    return info.isValid;
   });
 
-  ipcMain.handle('license:checkExpiry', async (): Promise<{ expired: boolean; daysRemaining: number }> => {
-    const db = dbManager.getDB();
-    const row = db.prepare('SELECT expiry FROM license_state WHERE id = 1').get() as any;
-    if (!row || !row.expiry) {
-      return { expired: true, daysRemaining: 0 };
+  // Check expiry status
+  ipcMain.handle('license:checkExpiry', async (): Promise<{ expired: boolean; daysRemaining: number; graceRemaining: number }> => {
+    const info = await licenseService.getLicenseInfo();
+    return {
+      expired: info.isExpired,
+      daysRemaining: info.daysRemaining,
+      graceRemaining: info.graceRemaining
+    };
+  });
+
+  // Check if feature is available
+  ipcMain.handle('license:checkFeature', async (_evt, feature: string): Promise<boolean> => {
+    return await licenseService.isFeatureAvailable(feature as any);
+  });
+
+  // Check usage limits
+  ipcMain.handle('license:checkLimit', async (_evt, type: 'users' | 'orders', current: number): Promise<boolean> => {
+    return await licenseService.checkLimit(type, current);
+  });
+
+  // Generate license key (for testing/admin use)
+  ipcMain.handle('license:generateKey', async (_evt, email: string, plan: LicensePlan, days: number): Promise<string> => {
+    const expiryDate = new Date();
+    expiryDate.setDate(expiryDate.getDate() + days);
+    return licenseService.generateLicenseKey(email, plan, expiryDate);
+  });
+
+  // Export license for support
+  ipcMain.handle('license:exportDebug', async (): Promise<void> => {
+    const debugInfo = await licenseService.exportDebugInfo();
+    
+    const { filePath } = await dialog.showSaveDialog({
+      title: 'Export License Debug Info',
+      defaultPath: path.join(app.getPath('desktop'), `license-debug-${Date.now()}.json`),
+      filters: [
+        { name: 'JSON Files', extensions: ['json'] }
+      ]
+    });
+    
+    if (filePath) {
+      fs.writeFileSync(filePath, debugInfo);
     }
-    const now = new Date();
-    const expiry = new Date(row.expiry);
-    const ms = expiry.getTime() - now.getTime();
-    const days = Math.ceil(ms / (1000 * 60 * 60 * 24));
-    return { expired: days <= 0, daysRemaining: Math.max(0, days) };
+  });
+
+  // Import license from file
+  ipcMain.handle('license:importFromFile', async (): Promise<{ success: boolean; message: string }> => {
+    const { filePaths } = await dialog.showOpenDialog({
+      title: 'Import License Key',
+      filters: [
+        { name: 'License Files', extensions: ['lic', 'txt'] },
+        { name: 'All Files', extensions: ['*'] }
+      ],
+      properties: ['openFile']
+    });
+    
+    if (filePaths && filePaths.length > 0) {
+      try {
+        const licenseKey = fs.readFileSync(filePaths[0], 'utf-8').trim();
+        return await licenseService.activateLicense(licenseKey);
+      } catch (error: any) {
+        return { success: false, message: 'Failed to read license file: ' + error.message };
+      }
+    }
+    
+    return { success: false, message: 'No file selected' };
+  });
+
+  // Check for updates (placeholder for online verification)
+  ipcMain.handle('license:checkUpdates', async (): Promise<{ available: boolean; message: string }> => {
+    // In production, this would check online for license updates
+    // For now, just verify current license
+    const info = await licenseService.getLicenseInfo(true);
+    
+    if (info.daysRemaining > 0 && info.daysRemaining <= 7) {
+      return {
+        available: true,
+        message: `Your license expires in ${info.daysRemaining} days. Please renew soon.`
+      };
+    }
+    
+    if (info.isExpired) {
+      return {
+        available: true,
+        message: 'Your license has expired. Please renew to continue using all features.'
+      };
+    }
+    
+    return {
+      available: false,
+      message: 'Your license is up to date.'
+    };
   });
 }

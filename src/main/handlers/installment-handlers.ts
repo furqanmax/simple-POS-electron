@@ -15,28 +15,31 @@ export function registerInstallmentHandlers(ipcMain: IpcMain): void {
       `).run(
         planData.order_id,
         planData.principal,
-        planData.down_payment,
-        planData.fee,
+        planData.down_payment || 0,  // Default to 0 if not provided
+        planData.fee || 0,            // Default to 0 if not provided
         planData.frequency,
-        planData.count,
+        planData.count || planData.num_installments || 3,  // Support both field names
         planData.start_date,
-        planData.rounding_mode
+        planData.rounding_mode || 'bankers'  // Default rounding mode
       );
       
       const planId = result.lastInsertRowid;
       
       // Generate installment schedule
-      const amountToFinance = planData.principal - planData.down_payment + planData.fee;
-      const installmentAmount = amountToFinance / planData.count;
+      const downPayment = planData.down_payment || 0;
+      const fee = planData.fee || 0;
+      const count = planData.count || planData.num_installments || 3;
+      const amountToFinance = planData.principal - downPayment + fee;
+      const installmentAmount = amountToFinance / count;
       
       let currentDate = new Date(planData.start_date);
       let remainingAmount = amountToFinance;
       
-      for (let i = 1; i <= planData.count; i++) {
+      for (let i = 1; i <= count; i++) {
         let amount = installmentAmount;
         
         // Last installment gets the remaining amount to handle rounding
-        if (i === planData.count) {
+        if (i === count) {
           amount = remainingAmount;
         } else {
           remainingAmount -= amount;
@@ -114,15 +117,49 @@ export function registerInstallmentHandlers(ipcMain: IpcMain): void {
         i.*,
         p.*,
         o.id as order_id,
-        o.grand_total
+        o.grand_total,
+        c.name as customer_name
       FROM installments i
       JOIN installment_plans p ON i.plan_id = p.id
       JOIN orders o ON p.order_id = o.id
+      LEFT JOIN customers c ON o.customer_id = c.id
       WHERE i.status = 'overdue'
       ORDER BY i.due_date
     `).all() as any[];
     
-    return overdueInstallments;
+    return overdueInstallments.map(inst => ({
+      ...inst,
+      customer: { name: inst.customer_name || 'Walk-in' }
+    }));
+  });
+
+  ipcMain.handle('installments:getActivePlans', async (): Promise<any[]> => {
+    const db = dbManager.getDB();
+    
+    const activePlans = db.prepare(`
+      SELECT 
+        p.*,
+        o.id as order_id,
+        o.grand_total,
+        c.name as customer_name,
+        COUNT(CASE WHEN i.status = 'paid' THEN 1 END) as paid_count,
+        COUNT(i.id) as total_count,
+        SUM(CASE WHEN i.status = 'paid' THEN i.amount_due ELSE 0 END) as paid_amount,
+        SUM(i.amount_due) as total_amount,
+        MIN(CASE WHEN i.status = 'pending' THEN i.due_date END) as next_due_date
+      FROM installment_plans p
+      JOIN orders o ON p.order_id = o.id
+      LEFT JOIN customers c ON o.customer_id = c.id
+      JOIN installments i ON p.id = i.plan_id
+      GROUP BY p.id
+      HAVING COUNT(CASE WHEN i.status != 'paid' THEN 1 END) > 0
+      ORDER BY p.created_at DESC
+    `).all() as any[];
+    
+    return activePlans.map(plan => ({
+      ...plan,
+      customer: { name: plan.customer_name || 'Walk-in' }
+    }));
   });
 
   ipcMain.handle('installments:recordPayment', async (_, installmentId: number, amount: number, method: string, reference?: string): Promise<void> => {

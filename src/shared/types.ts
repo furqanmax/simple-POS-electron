@@ -180,6 +180,33 @@ export interface LicenseState {
   last_seen_monotonic?: number;
 }
 
+export interface LicenseFeatures {
+  maxUsers: number;
+  maxOrders: number;
+  canExport: boolean;
+  canBackup: boolean;
+  multipleTemplates: boolean;
+  installments: boolean;
+  advancedReports: boolean;
+  emailSupport: boolean;
+  phoneSupport: boolean;
+}
+
+export type LicenseStatus = 'valid' | 'expired' | 'grace' | 'trial' | 'invalid' | 'tampered';
+
+export interface LicenseInfo {
+  isValid: boolean;
+  isExpired: boolean;
+  isTrial: boolean;
+  plan: LicensePlan;
+  expiryDate: Date | null;
+  daysRemaining: number;
+  graceRemaining: number;
+  features: LicenseFeatures;
+  status: LicenseStatus;
+  message: string;
+}
+
 export interface BillSizeSpec {
   width: number;
   height: number;
@@ -319,11 +346,18 @@ export interface IPCApi {
 
   // License
   license: {
+    getInfo: () => Promise<LicenseInfo>;
     getState: () => Promise<LicenseState | null>;
-    activate: (token: string) => Promise<void>;
+    activate: (licenseKey: string) => Promise<{ success: boolean; message: string }>;
     deactivate: () => Promise<void>;
     verify: () => Promise<boolean>;
-    checkExpiry: () => Promise<{ expired: boolean; daysRemaining: number }>;
+    checkExpiry: () => Promise<{ expired: boolean; daysRemaining: number; graceRemaining: number }>;
+    checkFeature: (feature: string) => Promise<boolean>;
+    checkLimit: (type: 'users' | 'orders', current: number) => Promise<boolean>;
+    generateKey: (email: string, plan: LicensePlan, days: number) => Promise<string>;
+    exportDebug: () => Promise<void>;
+    importFromFile: () => Promise<{ success: boolean; message: string }>;
+    checkUpdates: () => Promise<{ available: boolean; message: string }>;
   };
 
   // Print

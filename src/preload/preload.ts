@@ -108,11 +108,18 @@ const api: IPCApi = {
   },
 
   license: {
+    getInfo: () => ipcRenderer.invoke('license:getInfo'),
     getState: () => ipcRenderer.invoke('license:getState'),
-    activate: (token: string) => ipcRenderer.invoke('license:activate', token),
+    activate: (licenseKey: string) => ipcRenderer.invoke('license:activate', licenseKey),
     deactivate: () => ipcRenderer.invoke('license:deactivate'),
     verify: () => ipcRenderer.invoke('license:verify'),
     checkExpiry: () => ipcRenderer.invoke('license:checkExpiry'),
+    checkFeature: (feature: string) => ipcRenderer.invoke('license:checkFeature', feature),
+    checkLimit: (type: 'users' | 'orders', current: number) => ipcRenderer.invoke('license:checkLimit', type, current),
+    generateKey: (email: string, plan: any, days: number) => ipcRenderer.invoke('license:generateKey', email, plan, days),
+    exportDebug: () => ipcRenderer.invoke('license:exportDebug'),
+    importFromFile: () => ipcRenderer.invoke('license:importFromFile'),
+    checkUpdates: () => ipcRenderer.invoke('license:checkUpdates'),
   },
 
   print: {

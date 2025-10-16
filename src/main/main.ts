@@ -24,8 +24,10 @@ function createWindow(): void {
   // Load the main HTML file from dist
   mainWindow.loadFile(path.join(__dirname, '../../renderer/index.html'));
 
-  // Open DevTools to debug (always open for now)
-  mainWindow.webContents.openDevTools();
+  // Open DevTools only in development mode
+  if (process.env.NODE_ENV === 'development') {
+    mainWindow.webContents.openDevTools();
+  }
   
   // Log when page finishes loading
   mainWindow.webContents.on('did-finish-load', () => {
