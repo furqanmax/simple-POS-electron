@@ -894,30 +894,85 @@ async function renderTemplates() {
   const contentArea = document.getElementById('content-area');
   if (!contentArea) return;
   
-  if (currentUser?.role !== 'admin') {
-    contentArea.innerHTML = '<h2>Unauthorized</h2>';
-    return;
-  }
+  // Check permissions
+  try {
+    const hasPermission = await window.posAPI.permissions.checkPermission(
+      currentUser?.id || 0, 'templates', 'read'
+    );
+    if (!hasPermission && currentUser?.role !== 'admin') {
+      contentArea.innerHTML = `
+        <div class="card">
+          <h2>Access Denied</h2>
+          <p>You don't have permission to manage templates.</p>
+        </div>
+      `;
+      return;
+    }
+  } catch {}
   
   contentArea.innerHTML = `
     <div class="flex-between mb-4">
       <h2>Invoice Templates</h2>
-      <button class="btn btn-primary" onclick="createNewTemplate()">Create Template</button>
+      <div style="display: flex; gap: 0.5rem;">
+        <button class="btn btn-secondary" onclick="importTemplate()" title="Import Template">
+          <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16" style="vertical-align: text-bottom;">
+            <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+            <path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/>
+          </svg>
+          Import
+        </button>
+        <button class="btn btn-primary" onclick="showCreateTemplateModal()">
+          <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16" style="vertical-align: text-bottom;">
+            <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/>
+            <path d="M2 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2zm10-1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1z"/>
+          </svg>
+          Create Template
+        </button>
+      </div>
     </div>
     
-    <div style="display: grid; grid-template-columns: 1fr 400px; gap: 1.5rem;">
+    <div style="display: grid; grid-template-columns: 1fr 450px; gap: 1.5rem;">
       <!-- Template List -->
       <div class="card">
         <div class="card-header">
           <h3 class="card-title">Templates</h3>
+          <div style="display: flex; gap: 0.5rem;">
+            <input type="text" id="template-search" placeholder="Search templates..." 
+                   style="padding: 0.25rem 0.5rem; font-size: 0.9rem;" 
+                   onkeyup="filterTemplates()">
+            <select id="template-filter" onchange="filterTemplates()" 
+                    style="padding: 0.25rem 0.5rem; font-size: 0.9rem;">
+              <option value="all">All Templates</option>
+              <option value="default">Default Only</option>
+              <option value="custom">Custom Only</option>
+            </select>
+          </div>
         </div>
-        <div id="templates-list">Loading...</div>
+        <div id="templates-list" style="position: relative; min-height: 200px;">
+          <div class="loading-spinner" style="display: flex; justify-content: center; padding: 2rem;">
+            Loading templates...
+          </div>
+        </div>
       </div>
       
       <!-- Template Editor -->
-      <div class="card">
+      <div class="card" style="position: sticky; top: 1rem; height: fit-content; max-height: calc(100vh - 6rem); overflow-y: auto;">
         <div class="card-header">
           <h3 class="card-title">Template Editor</h3>
+          <div id="template-actions" style="display: none;">
+            <button class="btn btn-sm" onclick="duplicateCurrentTemplate()" title="Duplicate">
+              <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                <path d="M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V2Zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H6Z"/>
+                <path d="M2 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1h1v1a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1v1H2Z"/>
+              </svg>
+            </button>
+            <button class="btn btn-sm" onclick="exportCurrentTemplate()" title="Export">
+              <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+                <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
+              </svg>
+            </button>
+          </div>
         </div>
         <div id="template-editor" style="padding: 1rem;">
           <p class="text-center" style="color: var(--color-text-tertiary);">Select a template to edit</p>
@@ -925,14 +980,128 @@ async function renderTemplates() {
       </div>
     </div>
     
+    <!-- Create Template Modal -->
+    <div id="create-template-modal" class="modal" style="display:none;">
+      <div class="modal-content" style="max-width: 500px;">
+        <div class="modal-header">
+          <h3>Create New Template</h3>
+          <button onclick="closeCreateTemplateModal()">&times;</button>
+        </div>
+        <form id="create-template-form" style="padding: 1.5rem;">
+          <div class="form-group">
+            <label>Template Name <span style="color: red;">*</span></label>
+            <input type="text" id="new-template-name" required 
+                   placeholder="e.g., Modern Invoice Template" maxlength="100">
+          </div>
+          <div class="form-group">
+            <label>Based On</label>
+            <select id="template-base">
+              <option value="blank">Blank Template</option>
+              <option value="default">Copy from Default</option>
+              <option value="existing">Copy from Existing</option>
+            </select>
+          </div>
+          <div id="existing-templates-select" class="form-group" style="display: none;">
+            <label>Select Template to Copy</label>
+            <select id="copy-from-template"></select>
+          </div>
+          <div class="form-group">
+            <label>Bill Size</label>
+            <select id="new-bill-size">
+              <option value="A4">A4 (210 × 297 mm)</option>
+              <option value="A5">A5 (148 × 210 mm)</option>
+              <option value="Letter">Letter (8.5 × 11 in)</option>
+              <option value="Thermal80">80mm Thermal</option>
+              <option value="Thermal58">58mm Thermal</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Layout Style</label>
+            <select id="new-layout">
+              <option value="Classic">Classic</option>
+              <option value="Minimal">Minimal</option>
+              <option value="Compact">Compact</option>
+              <option value="Detailed">Detailed</option>
+            </select>
+          </div>
+          <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1.5rem;">
+            <button type="button" class="btn btn-secondary" onclick="closeCreateTemplateModal()">Cancel</button>
+            <button type="submit" class="btn btn-primary">Create Template</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    
     <!-- Preview Modal -->
     <div id="template-preview-modal" class="modal" style="display:none;">
-      <div class="modal-content" style="max-width: 900px;">
+      <div class="modal-content" style="max-width: 900px; max-height: 90vh; overflow: auto;">
         <div class="modal-header">
           <h3>Template Preview</h3>
           <button onclick="closeTemplatePreview()">&times;</button>
         </div>
-        <div id="template-preview-content"></div>
+        <div id="template-preview-content" style="padding: 1.5rem; background: white; min-height: 400px;"></div>
+        <div style="padding: 1rem; border-top: 1px solid var(--color-border); display: flex; justify-content: flex-end; gap: 1rem;">
+          <button class="btn btn-secondary" onclick="closeTemplatePreview()">Close</button>
+          <button class="btn btn-primary" onclick="printPreviewTemplate()">Print Preview</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- QR Code Modal -->
+    <div id="qr-code-modal" class="modal" style="display:none;">
+      <div class="modal-content" style="max-width: 500px;">
+        <div class="modal-header">
+          <h3>Add QR Code</h3>
+          <button onclick="closeQRModal()">&times;</button>
+        </div>
+        <form id="qr-code-form" style="padding: 1.5rem;">
+          <div class="form-group">
+            <label>QR Code Label <span style="color: red;">*</span></label>
+            <input type="text" id="qr-label" required placeholder="e.g., Payment QR" maxlength="50">
+          </div>
+          <div class="form-group">
+            <label>QR Code Type</label>
+            <select id="qr-type" onchange="updateQRDataField()">
+              <option value="custom">Custom Text/URL</option>
+              <option value="upi">UPI Payment</option>
+              <option value="website">Website URL</option>
+              <option value="email">Email</option>
+              <option value="phone">Phone Number</option>
+            </select>
+          </div>
+          <div id="qr-data-fields">
+            <div class="form-group">
+              <label>Data/Content <span style="color: red;">*</span></label>
+              <input type="text" id="qr-data" required placeholder="Enter QR code content">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Size (pixels)</label>
+            <input type="number" id="qr-size" value="150" min="50" max="500" step="10">
+          </div>
+          <div class="form-group">
+            <label>Error Correction Level</label>
+            <select id="qr-correction">
+              <option value="L">Low (7% recovery)</option>
+              <option value="M" selected>Medium (15% recovery)</option>
+              <option value="Q">Quartile (25% recovery)</option>
+              <option value="H">High (30% recovery)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Position</label>
+            <select id="qr-position">
+              <option value="bottom-right">Bottom Right</option>
+              <option value="bottom-left">Bottom Left</option>
+              <option value="top-right">Top Right</option>
+              <option value="top-left">Top Left</option>
+            </select>
+          </div>
+          <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1.5rem;">
+            <button type="button" class="btn btn-secondary" onclick="closeQRModal()">Cancel</button>
+            <button type="submit" class="btn btn-primary">Add QR Code</button>
+          </div>
+        </form>
       </div>
     </div>
   `;
@@ -940,50 +1109,182 @@ async function renderTemplates() {
   await loadTemplatesList();
 }
 
+// Store templates globally for filtering
+let allTemplates: any[] = [];
+let currentEditingTemplate: any = null;
+
 async function loadTemplatesList() {
+  const listDiv = document.getElementById('templates-list');
+  if (!listDiv) return;
+  
   try {
+    // Show loading state
+    listDiv.innerHTML = `
+      <div style="display: flex; justify-content: center; padding: 2rem;">
+        <div>Loading templates...</div>
+      </div>
+    `;
+    
     const templates = await window.posAPI.templates.getAll();
-    const listDiv = document.getElementById('templates-list');
-    if (!listDiv) return;
+    allTemplates = templates; // Store for filtering
     
     if (templates.length === 0) {
-      listDiv.innerHTML = '<p>No templates found</p>';
-    } else {
       listDiv.innerHTML = `
-        <table class="table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Default</th>
-              <th>Size</th>
-              <th>Layout</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${templates.map((t: any) => `
-              <tr>
-                <td>${t.name}</td>
-                <td>${t.is_default ? '✓ Default' : ''}</td>
-                <td>${t.preferred_bill_size || 'A4'}</td>
-                <td>${t.preferred_layout || 'Classic'}</td>
-                <td>
-                  <button class="btn btn-sm" onclick="editTemplate(${t.id})">Edit</button>
-                  <button class="btn btn-sm" onclick="previewTemplate(${t.id})">Preview</button>
-                  ${!t.is_default ? `
-                    <button class="btn btn-sm" onclick="setDefaultTemplate(${t.id})">Set Default</button>
-                    <button class="btn btn-sm btn-danger" onclick="deleteTemplate(${t.id})">Delete</button>
-                  ` : ''}
-                </td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
+        <div style="text-align: center; padding: 3rem;">
+          <p style="color: var(--color-text-tertiary); margin-bottom: 1rem;">No templates found</p>
+          <button class="btn btn-primary" onclick="showCreateTemplateModal()">Create Your First Template</button>
+        </div>
       `;
+    } else {
+      renderTemplatesList(templates);
     }
   } catch (error: any) {
+    listDiv.innerHTML = `
+      <div style="text-align: center; padding: 2rem; color: var(--color-danger);">
+        <p>Failed to load templates</p>
+        <small>${error.message}</small>
+        <br><br>
+        <button class="btn btn-secondary" onclick="loadTemplatesList()">Retry</button>
+      </div>
+    `;
     showToast('Failed to load templates: ' + error.message, 'error');
   }
+}
+
+function renderTemplatesList(templates: any[]) {
+  const listDiv = document.getElementById('templates-list');
+  if (!listDiv) return;
+  
+  listDiv.innerHTML = `
+    <div style="max-height: 600px; overflow-y: auto;">
+      <table class="table">
+        <thead style="position: sticky; top: 0; background: var(--color-bg-primary); z-index: 10;">
+          <tr>
+            <th>Name</th>
+            <th style="text-align: center;">Default</th>
+            <th>Size</th>
+            <th>Layout</th>
+            <th style="text-align: right;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${templates.map((t: any) => `
+            <tr class="template-row" data-template-id="${t.id}" 
+                onmouseover="this.style.background='var(--color-bg-secondary)'" 
+                onmouseout="this.style.background='transparent'">
+              <td>
+                <strong>${escapeHtml(t.name)}</strong>
+                <br>
+                <small style="color: var(--color-text-tertiary);">
+                  Created: ${new Date(t.created_at).toLocaleDateString()}
+                </small>
+              </td>
+              <td style="text-align: center;">
+                ${t.is_default ? 
+                  '<span class="badge badge-success">Default</span>' : 
+                  '<span style="color: var(--color-text-tertiary);">-</span>'
+                }
+              </td>
+              <td>${formatBillSize(t.preferred_bill_size || 'A4')}</td>
+              <td>
+                <span class="badge badge-secondary">${t.preferred_layout || 'Classic'}</span>
+              </td>
+              <td style="text-align: right;">
+                <div style="display: flex; gap: 0.25rem; justify-content: flex-end;">
+                  <button class="btn btn-sm" onclick="editTemplate(${t.id})" title="Edit">
+                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                      <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293l6.5-6.5zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
+                    </svg>
+                  </button>
+                  <button class="btn btn-sm" onclick="previewTemplate(${t.id})" title="Preview">
+                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                      <path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/>
+                      <path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/>
+                    </svg>
+                  </button>
+                  <button class="btn btn-sm" onclick="duplicateTemplate(${t.id})" title="Duplicate">
+                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                      <path d="M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V2Zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H6Z"/>
+                      <path d="M2 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1h1v1a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1v1H2Z"/>
+                    </svg>
+                  </button>
+                  ${!t.is_default ? `
+                    <button class="btn btn-sm btn-primary" onclick="setDefaultTemplate(${t.id})" title="Set as Default">
+                      <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                        <path d="M3.612 15.443c-.386.198-.824-.149-.746-.592l.83-4.73L.173 6.765c-.329-.314-.158-.888.283-.95l4.898-.696L7.538.792c.197-.39.73-.39.927 0l2.184 4.327 4.898.696c.441.062.612.636.282.95l-3.522 3.356.83 4.73c.078.443-.36.79-.746.592L8 13.187l-4.389 2.256z"/>
+                      </svg>
+                    </button>
+                    <button class="btn btn-sm btn-danger" onclick="confirmDeleteTemplate(${t.id}, '${escapeHtml(t.name)}')" title="Delete">
+                      <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                        <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
+                        <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
+                      </svg>
+                    </button>
+                  ` : ''}
+                </div>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+    <div style="padding: 0.5rem; text-align: center; border-top: 1px solid var(--color-border); color: var(--color-text-tertiary);">
+      ${templates.length} template${templates.length !== 1 ? 's' : ''}
+    </div>
+  `;
+}
+
+// Helper functions for template display
+function escapeHtml(text: string): string {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function formatBillSize(size: string): string {
+  const sizeMap: { [key: string]: string } = {
+    'A3': 'A3',
+    'A4': 'A4',
+    'A5': 'A5',
+    'Letter': 'Letter',
+    'Legal': 'Legal',
+    'Thermal80': '80mm',
+    'Thermal58': '58mm',
+    'Thermal57': '57mm',
+    'Thermal76': '76mm'
+  };
+  return sizeMap[size] || size;
+}
+
+// Filter templates
+function filterTemplates() {
+  const searchInput = document.getElementById('template-search') as HTMLInputElement;
+  const filterSelect = document.getElementById('template-filter') as HTMLSelectElement;
+  
+  if (!searchInput || !filterSelect) return;
+  
+  const searchTerm = searchInput.value.toLowerCase();
+  const filterType = filterSelect.value;
+  
+  let filtered = allTemplates;
+  
+  // Apply filter
+  if (filterType === 'default') {
+    filtered = filtered.filter(t => t.is_default);
+  } else if (filterType === 'custom') {
+    filtered = filtered.filter(t => !t.is_default);
+  }
+  
+  // Apply search
+  if (searchTerm) {
+    filtered = filtered.filter(t => 
+      t.name.toLowerCase().includes(searchTerm) ||
+      (t.preferred_bill_size || '').toLowerCase().includes(searchTerm) ||
+      (t.preferred_layout || '').toLowerCase().includes(searchTerm)
+    );
+  }
+  
+  renderTemplatesList(filtered);
 }
 
 async function editTemplate(templateId: number) {
@@ -991,99 +1292,174 @@ async function editTemplate(templateId: number) {
     const template = await window.posAPI.templates.getById(templateId);
     const assets = await window.posAPI.templates.getAssets(templateId);
     
-    if (!template) return;
+    if (!template) {
+      showToast('Template not found', 'error');
+      return;
+    }
     
+    currentEditingTemplate = template;
     const headerData = JSON.parse(template.header_json || '{}');
     const footerData = JSON.parse(template.footer_json || '{}');
     const editorDiv = document.getElementById('template-editor');
+    const templateActions = document.getElementById('template-actions');
     
     if (!editorDiv) return;
     
+    // Show template actions
+    if (templateActions) {
+      templateActions.style.display = 'block';
+    }
+    
     editorDiv.innerHTML = `
-      <form id="template-form">
-        <h4>${template.name}</h4>
-        
-        <div class="form-group">
-          <label>Business Name</label>
-          <input type="text" id="business-name" value="${headerData.businessName || ''}">
+      <form id="template-form" data-template-id="${templateId}">
+        <div style="margin-bottom: 1rem;">
+          <h4 style="margin: 0;">${escapeHtml(template.name)}</h4>
+          ${template.is_default ? '<span class="badge badge-success">Default Template</span>' : ''}
         </div>
         
         <div class="form-group">
-          <label>Business Address</label>
-          <textarea id="business-address" rows="2">${headerData.businessAddress || ''}</textarea>
+          <label>Template Name</label>
+          <input type="text" id="template-name" value="${escapeHtml(template.name)}" 
+                 required maxlength="100" ${template.is_default ? 'readonly' : ''}>
         </div>
         
-        <div class="form-group">
-          <label>Phone</label>
-          <input type="text" id="business-phone" value="${headerData.businessPhone || ''}">
-        </div>
+        <fieldset style="border: 1px solid var(--color-border); padding: 1rem; margin-bottom: 1rem; border-radius: 4px;">
+          <legend style="padding: 0 0.5rem; font-weight: bold;">Business Information</legend>
+          
+          <div class="form-group">
+            <label>Business Name</label>
+            <input type="text" id="business-name" value="${escapeHtml(headerData.businessName || '')}" 
+                   placeholder="Your Business Name" maxlength="100">
+          </div>
+          
+          <div class="form-group">
+            <label>Business Address</label>
+            <textarea id="business-address" rows="3" placeholder="123 Main Street\nCity, State 12345">${escapeHtml(headerData.businessAddress || '')}</textarea>
+          </div>
+          
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+            <div class="form-group">
+              <label>Phone</label>
+              <input type="tel" id="business-phone" value="${escapeHtml(headerData.businessPhone || '')}" 
+                     placeholder="+91 98765 43210">
+            </div>
+            
+            <div class="form-group">
+              <label>Email</label>
+              <input type="email" id="business-email" value="${escapeHtml(headerData.businessEmail || '')}" 
+                     placeholder="contact@business.com">
+            </div>
+          </div>
+          
+          <div class="form-group">
+            <label>Tax ID/GSTIN</label>
+            <input type="text" id="business-taxid" value="${escapeHtml(headerData.businessTaxId || '')}" 
+                   placeholder="GSTIN or Tax ID">
+          </div>
+          
+          <div class="form-group">
+            <label>Website</label>
+            <input type="url" id="business-website" value="${escapeHtml(headerData.businessWebsite || '')}" 
+                   placeholder="https://www.yourbusiness.com">
+          </div>
+        </fieldset>
         
-        <div class="form-group">
-          <label>Email</label>
-          <input type="email" id="business-email" value="${headerData.businessEmail || ''}">
-        </div>
+        <fieldset style="border: 1px solid var(--color-border); padding: 1rem; margin-bottom: 1rem; border-radius: 4px;">
+          <legend style="padding: 0 0.5rem; font-weight: bold;">Invoice Settings</legend>
+          
+          <div class="form-group">
+            <label>Invoice Prefix</label>
+            <input type="text" id="invoice-prefix" value="${escapeHtml(headerData.invoicePrefix || 'INV-')}" 
+                   placeholder="INV-" maxlength="10">
+          </div>
+          
+          <div class="form-group">
+            <label>Footer Text</label>
+            <textarea id="footer-text" rows="3" placeholder="Thank you for your business!">${escapeHtml(footerData.footerText || headerData.footerText || 'Thank you for your business!')}</textarea>
+          </div>
+          
+          <div class="form-group">
+            <label>Terms & Conditions</label>
+            <textarea id="terms-conditions" rows="3" placeholder="Payment due within 30 days...">${escapeHtml(footerData.termsConditions || '')}</textarea>
+          </div>
+          
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+            <div class="form-group">
+              <label>Preferred Bill Size</label>
+              <select id="bill-size">
+                <option value="A3" ${template.preferred_bill_size === 'A3' ? 'selected' : ''}>A3 (297 × 420 mm)</option>
+                <option value="A4" ${template.preferred_bill_size === 'A4' ? 'selected' : ''}>A4 (210 × 297 mm)</option>
+                <option value="A5" ${template.preferred_bill_size === 'A5' ? 'selected' : ''}>A5 (148 × 210 mm)</option>
+                <option value="Letter" ${template.preferred_bill_size === 'Letter' ? 'selected' : ''}>Letter (8.5 × 11 in)</option>
+                <option value="Legal" ${template.preferred_bill_size === 'Legal' ? 'selected' : ''}>Legal (8.5 × 14 in)</option>
+                <option value="Thermal80" ${template.preferred_bill_size === 'Thermal80' ? 'selected' : ''}>80mm Thermal</option>
+                <option value="Thermal58" ${template.preferred_bill_size === 'Thermal58' ? 'selected' : ''}>58mm Thermal</option>
+                <option value="Thermal57" ${template.preferred_bill_size === 'Thermal57' ? 'selected' : ''}>57mm Thermal</option>
+              </select>
+            </div>
+            
+            <div class="form-group">
+              <label>Layout Style</label>
+              <select id="layout">
+                <option value="Classic" ${template.preferred_layout === 'Classic' ? 'selected' : ''}>Classic</option>
+                <option value="Minimal" ${template.preferred_layout === 'Minimal' ? 'selected' : ''}>Minimal</option>
+                <option value="Compact" ${template.preferred_layout === 'Compact' ? 'selected' : ''}>Compact</option>
+                <option value="Detailed" ${template.preferred_layout === 'Detailed' ? 'selected' : ''}>Detailed</option>
+              </select>
+            </div>
+          </div>
+        </fieldset>
         
-        <div class="form-group">
-          <label>Tax ID/GSTIN</label>
-          <input type="text" id="business-taxid" value="${headerData.businessTaxId || ''}">
-        </div>
+        <fieldset style="border: 1px solid var(--color-border); padding: 1rem; margin-bottom: 1rem; border-radius: 4px;">
+          <legend style="padding: 0 0.5rem; font-weight: bold;">Logo & Branding</legend>
+          
+          <div id="logo-section" style="margin-bottom: 1rem;">
+            ${assets.find((a: any) => a.type === 'logo') ? 
+              `<div style="padding: 1rem; background: var(--color-bg-tertiary); border-radius: 4px; margin-bottom: 0.5rem;">
+                <strong>✅ Logo uploaded</strong>
+                <button type="button" class="btn btn-sm btn-danger" style="float: right;" onclick="removeLogo(${templateId})">Remove</button>
+              </div>` : 
+              '<p style="color: var(--color-text-tertiary);">No logo uploaded</p>'
+            }
+            <button type="button" class="btn btn-sm btn-primary" onclick="uploadLogo(${templateId})">
+              ${assets.find((a: any) => a.type === 'logo') ? 'Replace Logo' : 'Upload Logo'}
+            </button>
+          </div>
+        </fieldset>
         
-        <div class="form-group">
-          <label>Footer Text</label>
-          <textarea id="footer-text" rows="2">${headerData.footerText || 'Thank you for your business!'}</textarea>
-        </div>
+        <fieldset style="border: 1px solid var(--color-border); padding: 1rem; margin-bottom: 1rem; border-radius: 4px;">
+          <legend style="padding: 0 0.5rem; font-weight: bold;">QR Codes</legend>
+          
+          <div id="qr-codes-list" style="margin-bottom: 1rem;">
+            ${assets.filter((a: any) => a.type === 'qr').length > 0 ? 
+              assets.filter((a: any) => a.type === 'qr').map((qr: any) => {
+                const meta = JSON.parse(qr.meta_json);
+                return `
+                  <div class="qr-item" style="margin-bottom: 0.5rem; padding: 0.75rem; background: var(--color-bg-tertiary); border-radius: 4px; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                      <strong>${escapeHtml(meta.label)}</strong><br>
+                      <small style="color: var(--color-text-tertiary);">${escapeHtml(meta.data).substring(0, 50)}${meta.data.length > 50 ? '...' : ''}</small>
+                    </div>
+                    <button class="btn btn-sm btn-danger" onclick="removeQRCode(${qr.id}, ${templateId})">Remove</button>
+                  </div>
+                `;
+              }).join('') :
+              '<p style="color: var(--color-text-tertiary);">No QR codes added</p>'
+            }
+          </div>
+          <button type="button" class="btn btn-sm btn-primary" onclick="showAddQRModal(${templateId})">
+            + Add QR Code
+          </button>
+        </fieldset>
         
-        <div class="form-group">
-          <label>Preferred Bill Size</label>
-          <select id="bill-size">
-            <option value="A3" ${template.preferred_bill_size === 'A3' ? 'selected' : ''}>A3</option>
-            <option value="A4" ${template.preferred_bill_size === 'A4' ? 'selected' : ''}>A4</option>
-            <option value="A5" ${template.preferred_bill_size === 'A5' ? 'selected' : ''}>A5</option>
-            <option value="Letter" ${template.preferred_bill_size === 'Letter' ? 'selected' : ''}>Letter</option>
-            <option value="Legal" ${template.preferred_bill_size === 'Legal' ? 'selected' : ''}>Legal</option>
-            <option value="Thermal80" ${template.preferred_bill_size === 'Thermal80' ? 'selected' : ''}>80mm Thermal</option>
-            <option value="Thermal58" ${template.preferred_bill_size === 'Thermal58' ? 'selected' : ''}>58mm Thermal</option>
-          </select>
+        <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+          <button type="button" class="btn btn-secondary" onclick="previewTemplate(${templateId})" style="flex: 1;">
+            Preview
+          </button>
+          <button type="submit" class="btn btn-primary" style="flex: 2;">
+            Save Changes
+          </button>
         </div>
-        
-        <div class="form-group">
-          <label>Layout</label>
-          <select id="layout">
-            <option value="Classic" ${template.preferred_layout === 'Classic' ? 'selected' : ''}>Classic</option>
-            <option value="Minimal" ${template.preferred_layout === 'Minimal' ? 'selected' : ''}>Minimal</option>
-            <option value="Compact" ${template.preferred_layout === 'Compact' ? 'selected' : ''}>Compact</option>
-            <option value="Detailed" ${template.preferred_layout === 'Detailed' ? 'selected' : ''}>Detailed</option>
-          </select>
-        </div>
-        
-        <hr>
-        <h5>Logo</h5>
-        <div id="logo-section">
-          ${assets.find((a: any) => a.type === 'logo') ? 
-            '<p>Logo uploaded ✓</p>' : 
-            '<p>No logo</p>'
-          }
-          <button type="button" class="btn btn-sm" onclick="uploadLogo(${templateId})">Upload Logo</button>
-        </div>
-        
-        <hr>
-        <h5>QR Codes</h5>
-        <div id="qr-codes-list">
-          ${assets.filter((a: any) => a.type === 'qr').map((qr: any) => {
-            const meta = JSON.parse(qr.meta_json);
-            return `
-              <div class="qr-item" style="margin: 10px 0; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
-                <strong>${meta.label}</strong><br>
-                <small>${meta.data}</small><br>
-                <button class="btn btn-sm btn-danger" onclick="removeQRCode(${qr.id})">Remove</button>
-              </div>
-            `;
-          }).join('') || '<p>No QR codes</p>'}
-        </div>
-        <button type="button" class="btn btn-sm" onclick="addQRCode(${templateId})">Add QR Code</button>
-        
-        <hr>
-        <button type="submit" class="btn btn-primary btn-block">Save Template</button>
       </form>
     `;
     
@@ -2359,16 +2735,30 @@ async function deleteOpenOrder(id: number) {
 (window as any).deleteUser = deleteUser;
 (window as any).recordPayment = recordPayment;
 (window as any).viewInstallmentDetails = viewInstallmentDetails;
+// Template management function exports
+(window as any).showCreateTemplateModal = showCreateTemplateModal;
+(window as any).closeCreateTemplateModal = closeCreateTemplateModal;
 (window as any).createNewTemplate = createNewTemplate;
 (window as any).editTemplate = editTemplate;
 (window as any).previewTemplate = previewTemplate;
 (window as any).setDefaultTemplate = setDefaultTemplate;
+(window as any).confirmDeleteTemplate = confirmDeleteTemplate;
 (window as any).deleteTemplate = deleteTemplate;
+(window as any).duplicateTemplate = duplicateTemplate;
+(window as any).duplicateCurrentTemplate = duplicateCurrentTemplate;
+(window as any).exportCurrentTemplate = exportCurrentTemplate;
+(window as any).importTemplate = importTemplate;
+(window as any).filterTemplates = filterTemplates;
 (window as any).saveTemplate = saveTemplate;
 (window as any).uploadLogo = uploadLogo;
+(window as any).removeLogo = removeLogo;
+(window as any).showAddQRModal = showAddQRModal;
+(window as any).closeQRModal = closeQRModal;
+(window as any).updateQRDataField = updateQRDataField;
 (window as any).addQRCode = addQRCode;
 (window as any).removeQRCode = removeQRCode;
 (window as any).closeTemplatePreview = closeTemplatePreview;
+(window as any).printPreviewTemplate = printPreviewTemplate;
 (window as any).showInstallmentWizard = showInstallmentWizard;
 (window as any).closeInstallmentWizard = closeInstallmentWizard;
 (window as any).createInstallmentPlan = createInstallmentPlan;
@@ -2908,29 +3298,118 @@ function viewInstallmentDetails(planId: number) {
   showToast('Installment details view coming soon', 'info');
 }
 
-// Template management functions
+// Template management functions - Enhanced implementation
+function showCreateTemplateModal() {
+  const modal = document.getElementById('create-template-modal');
+  if (modal) {
+    modal.style.display = 'block';
+    loadTemplatesForCopy();
+    setupCreateTemplateForm();
+  }
+}
+
+function closeCreateTemplateModal() {
+  const modal = document.getElementById('create-template-modal');
+  if (modal) {
+    modal.style.display = 'none';
+    const form = document.getElementById('create-template-form') as HTMLFormElement;
+    if (form) form.reset();
+  }
+}
+
+async function loadTemplatesForCopy() {
+  try {
+    const templates = await window.posAPI.templates.getAll();
+    const select = document.getElementById('copy-from-template') as HTMLSelectElement;
+    if (select) {
+      select.innerHTML = templates.map(t => 
+        `<option value="${t.id}">${escapeHtml(t.name)}</option>`
+      ).join('');
+    }
+  } catch {}
+}
+
+function setupCreateTemplateForm() {
+  const form = document.getElementById('create-template-form');
+  const baseSelect = document.getElementById('template-base') as HTMLSelectElement;
+  const existingDiv = document.getElementById('existing-templates-select');
+  
+  if (baseSelect && existingDiv) {
+    baseSelect.addEventListener('change', () => {
+      existingDiv.style.display = baseSelect.value === 'existing' ? 'block' : 'none';
+    });
+  }
+  
+  if (form) {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      await createNewTemplate();
+    });
+  }
+}
+
 async function createNewTemplate() {
-  const name = prompt('Enter template name:');
-  if (!name) return;
+  const nameInput = document.getElementById('new-template-name') as HTMLInputElement;
+  const baseSelect = document.getElementById('template-base') as HTMLSelectElement;
+  const copyFromSelect = document.getElementById('copy-from-template') as HTMLSelectElement;
+  const billSizeSelect = document.getElementById('new-bill-size') as HTMLSelectElement;
+  const layoutSelect = document.getElementById('new-layout') as HTMLSelectElement;
+  
+  const name = nameInput?.value.trim();
+  if (!name) {
+    showToast('Please enter a template name', 'warning');
+    return;
+  }
+  
+  // Check for duplicate names
+  if (allTemplates.some(t => t.name.toLowerCase() === name.toLowerCase())) {
+    showToast('A template with this name already exists', 'error');
+    return;
+  }
   
   try {
+    let headerJson = {
+      businessName: 'Your Business Name',
+      businessAddress: 'Your Address',
+      businessPhone: '',
+      businessEmail: '',
+      businessTaxId: '',
+      businessWebsite: '',
+      invoicePrefix: 'INV-'
+    };
+    
+    let footerJson = {
+      footerText: 'Thank you for your business!',
+      termsConditions: ''
+    };
+    
+    // Copy from existing template if selected
+    if (baseSelect?.value === 'existing' && copyFromSelect?.value) {
+      const sourceTemplate = await window.posAPI.templates.getById(parseInt(copyFromSelect.value));
+      if (sourceTemplate) {
+        headerJson = JSON.parse(sourceTemplate.header_json || '{}');
+        footerJson = JSON.parse(sourceTemplate.footer_json || '{}');
+      }
+    } else if (baseSelect?.value === 'default') {
+      const defaultTemplate = await window.posAPI.templates.getDefault();
+      if (defaultTemplate) {
+        headerJson = JSON.parse(defaultTemplate.header_json || '{}');
+        footerJson = JSON.parse(defaultTemplate.footer_json || '{}');
+      }
+    }
+    
     const template = await window.posAPI.templates.create({
       name,
       is_default: false,
-      header_json: JSON.stringify({
-        businessName: 'Your Business Name',
-        businessAddress: 'Your Address',
-        businessPhone: '',
-        businessEmail: '',
-        businessTaxId: ''
-      }),
-      footer_json: JSON.stringify({ text: 'Thank you for your business!' }),
+      header_json: JSON.stringify(headerJson),
+      footer_json: JSON.stringify(footerJson),
       styles_json: JSON.stringify({ fontSize: 12, fontFamily: 'Arial' }),
-      preferred_bill_size: 'A4',
-      preferred_layout: 'Classic'
+      preferred_bill_size: (billSizeSelect?.value || 'A4') as any,
+      preferred_layout: (layoutSelect?.value || 'Classic') as any
     });
     
     showToast('Template created successfully', 'success');
+    closeCreateTemplateModal();
     await loadTemplatesList();
     await editTemplate(template.id);
   } catch (error: any) {
@@ -2940,28 +3419,46 @@ async function createNewTemplate() {
 
 async function saveTemplate(templateId: number) {
   try {
+    // Get template name if it's editable
+    const nameInput = document.getElementById('template-name') as HTMLInputElement;
+    const templateName = nameInput && !nameInput.readOnly ? nameInput.value : currentEditingTemplate?.name;
+    
+    // Collect all form data
     const headerData = {
-      businessName: (document.getElementById('business-name') as HTMLInputElement).value,
-      businessAddress: (document.getElementById('business-address') as HTMLTextAreaElement).value,
-      businessPhone: (document.getElementById('business-phone') as HTMLInputElement).value,
-      businessEmail: (document.getElementById('business-email') as HTMLInputElement).value,
-      businessTaxId: (document.getElementById('business-taxid') as HTMLInputElement).value,
-      footerText: (document.getElementById('footer-text') as HTMLTextAreaElement).value
+      businessName: (document.getElementById('business-name') as HTMLInputElement)?.value || '',
+      businessAddress: (document.getElementById('business-address') as HTMLTextAreaElement)?.value || '',
+      businessPhone: (document.getElementById('business-phone') as HTMLInputElement)?.value || '',
+      businessEmail: (document.getElementById('business-email') as HTMLInputElement)?.value || '',
+      businessTaxId: (document.getElementById('business-taxid') as HTMLInputElement)?.value || '',
+      businessWebsite: (document.getElementById('business-website') as HTMLInputElement)?.value || '',
+      invoicePrefix: (document.getElementById('invoice-prefix') as HTMLInputElement)?.value || 'INV-',
+      footerText: (document.getElementById('footer-text') as HTMLTextAreaElement)?.value || ''
     };
     
     const footerData = {
-      text: headerData.footerText
+      footerText: (document.getElementById('footer-text') as HTMLTextAreaElement)?.value || '',
+      termsConditions: (document.getElementById('terms-conditions') as HTMLTextAreaElement)?.value || ''
     };
     
-    const updates = {
+    const updates: any = {
       header_json: JSON.stringify(headerData),
       footer_json: JSON.stringify(footerData),
-      preferred_bill_size: (document.getElementById('bill-size') as HTMLSelectElement).value as any,
-      preferred_layout: (document.getElementById('layout') as HTMLSelectElement).value as any
+      preferred_bill_size: (document.getElementById('bill-size') as HTMLSelectElement)?.value as any,
+      preferred_layout: (document.getElementById('layout') as HTMLSelectElement)?.value as any
     };
+    
+    // Include name if changed and not default template
+    if (templateName && templateName !== currentEditingTemplate?.name && !currentEditingTemplate?.is_default) {
+      updates.name = templateName;
+    }
     
     await window.posAPI.templates.update(templateId, updates);
     showToast('Template saved successfully', 'success');
+    
+    // Refresh the template in the current editor to show updated values
+    await editTemplate(templateId);
+    
+    // Refresh the templates list to show any name changes
     await loadTemplatesList();
   } catch (error: any) {
     showToast('Failed to save template: ' + error.message, 'error');
@@ -2978,9 +3475,14 @@ async function setDefaultTemplate(templateId: number) {
   }
 }
 
+function confirmDeleteTemplate(templateId: number, templateName: string) {
+  const message = `Are you sure you want to delete the template "${templateName}"?\n\nThis action cannot be undone.`;
+  if (confirm(message)) {
+    deleteTemplate(templateId);
+  }
+}
+
 async function deleteTemplate(templateId: number) {
-  if (!confirm('Are you sure you want to delete this template?')) return;
-  
   try {
     await window.posAPI.templates.delete(templateId);
     showToast('Template deleted', 'success');
@@ -2988,6 +3490,134 @@ async function deleteTemplate(templateId: number) {
   } catch (error: any) {
     showToast('Failed to delete template: ' + error.message, 'error');
   }
+}
+
+async function duplicateTemplate(templateId: number) {
+  try {
+    const source = await window.posAPI.templates.getById(templateId);
+    if (!source) return;
+    
+    const newName = prompt('Name for the duplicated template:', source.name + ' Copy');
+    if (!newName) return;
+    
+    const template = await window.posAPI.templates.create({
+      name: newName,
+      is_default: false,
+      header_json: source.header_json,
+      footer_json: source.footer_json,
+      styles_json: source.styles_json,
+      preferred_bill_size: source.preferred_bill_size as any,
+      preferred_layout: source.preferred_layout as any
+    });
+    
+    // Copy assets too
+    const assets = await window.posAPI.templates.getAssets(templateId);
+    for (const asset of assets) {
+      if (asset.type === 'qr') {
+        const meta = JSON.parse(asset.meta_json);
+        await window.posAPI.templates.addQRCode(template.id, {
+          label: meta.label,
+          data: meta.data,
+          errorCorrectionLevel: meta.errorCorrectionLevel,
+          size: meta.size
+        });
+      }
+    }
+    
+    showToast('Template duplicated successfully', 'success');
+    await loadTemplatesList();
+  } catch (error: any) {
+    showToast('Failed to duplicate template: ' + error.message, 'error');
+  }
+}
+
+function duplicateCurrentTemplate() {
+  if (currentEditingTemplate) {
+    duplicateTemplate(currentEditingTemplate.id);
+  }
+}
+
+async function exportCurrentTemplate() {
+  if (!currentEditingTemplate) return;
+  
+  try {
+    const assets = await window.posAPI.templates.getAssets(currentEditingTemplate.id);
+    
+    const exportData = {
+      version: '1.0',
+      template: currentEditingTemplate,
+      assets: assets.map(a => ({
+        type: a.type,
+        meta_json: a.meta_json
+      }))
+    };
+    
+    const json = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `template-${currentEditingTemplate.name.replace(/[^a-z0-9]/gi, '-')}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    showToast('Template exported successfully', 'success');
+  } catch (error: any) {
+    showToast('Failed to export template: ' + error.message, 'error');
+  }
+}
+
+async function importTemplate() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
+  
+  input.onchange = async (e: any) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      
+      if (!data.template || !data.version) {
+        throw new Error('Invalid template file format');
+      }
+      
+      const name = prompt('Template name:', data.template.name);
+      if (!name) return;
+      
+      const template = await window.posAPI.templates.create({
+        name,
+        is_default: false,
+        header_json: data.template.header_json,
+        footer_json: data.template.footer_json,
+        styles_json: data.template.styles_json,
+        preferred_bill_size: data.template.preferred_bill_size as any,
+        preferred_layout: data.template.preferred_layout as any
+      });
+      
+      // Import assets
+      for (const asset of data.assets || []) {
+        if (asset.type === 'qr') {
+          const meta = JSON.parse(asset.meta_json);
+          await window.posAPI.templates.addQRCode(template.id, {
+            label: meta.label,
+            data: meta.data,
+            errorCorrectionLevel: meta.errorCorrectionLevel,
+            size: meta.size
+          });
+        }
+      }
+      
+      showToast('Template imported successfully', 'success');
+      await loadTemplatesList();
+    } catch (error: any) {
+      showToast('Failed to import template: ' + error.message, 'error');
+    }
+  };
+  
+  input.click();
 }
 
 async function uploadLogo(templateId: number) {
@@ -3002,41 +3632,161 @@ async function uploadLogo(templateId: number) {
   }
 }
 
-async function addQRCode(templateId: number) {
-  const label = prompt('QR Code label:');
-  if (!label) return;
+// Enhanced QR Code functionality
+let currentTemplateForQR: number | null = null;
+
+function showAddQRModal(templateId: number) {
+  currentTemplateForQR = templateId;
+  const modal = document.getElementById('qr-code-modal');
+  if (modal) {
+    modal.style.display = 'block';
+    setupQRCodeForm();
+  }
+}
+
+function closeQRModal() {
+  const modal = document.getElementById('qr-code-modal');
+  if (modal) {
+    modal.style.display = 'none';
+    const form = document.getElementById('qr-code-form') as HTMLFormElement;
+    if (form) form.reset();
+  }
+  currentTemplateForQR = null;
+}
+
+function setupQRCodeForm() {
+  const form = document.getElementById('qr-code-form');
+  if (form && !form.hasAttribute('data-initialized')) {
+    form.setAttribute('data-initialized', 'true');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      await addQRCode();
+    });
+  }
+}
+
+function updateQRDataField() {
+  const typeSelect = document.getElementById('qr-type') as HTMLSelectElement;
+  const dataFieldsDiv = document.getElementById('qr-data-fields');
   
-  const data = prompt('QR Code data (URL, text, etc.):');
-  if (!data) return;
+  if (!typeSelect || !dataFieldsDiv) return;
+  
+  const type = typeSelect.value;
+  
+  switch (type) {
+    case 'upi':
+      dataFieldsDiv.innerHTML = `
+        <div class="form-group">
+          <label>UPI ID <span style="color: red;">*</span></label>
+          <input type="text" id="qr-data" required placeholder="business@upi">
+        </div>
+        <div class="form-group">
+          <label>Business Name</label>
+          <input type="text" id="qr-upi-name" placeholder="Your Business Name">
+        </div>
+      `;
+      break;
+    case 'website':
+      dataFieldsDiv.innerHTML = `
+        <div class="form-group">
+          <label>Website URL <span style="color: red;">*</span></label>
+          <input type="url" id="qr-data" required placeholder="https://www.yourbusiness.com">
+        </div>
+      `;
+      break;
+    case 'email':
+      dataFieldsDiv.innerHTML = `
+        <div class="form-group">
+          <label>Email Address <span style="color: red;">*</span></label>
+          <input type="email" id="qr-data" required placeholder="contact@business.com">
+        </div>
+      `;
+      break;
+    case 'phone':
+      dataFieldsDiv.innerHTML = `
+        <div class="form-group">
+          <label>Phone Number <span style="color: red;">*</span></label>
+          <input type="tel" id="qr-data" required placeholder="+91 98765 43210">
+        </div>
+      `;
+      break;
+    default:
+      dataFieldsDiv.innerHTML = `
+        <div class="form-group">
+          <label>Data/Content <span style="color: red;">*</span></label>
+          <textarea id="qr-data" required placeholder="Enter QR code content" rows="3"></textarea>
+        </div>
+      `;
+  }
+}
+
+async function addQRCode() {
+  if (!currentTemplateForQR) return;
+  
+  const labelInput = document.getElementById('qr-label') as HTMLInputElement;
+  const dataInput = document.getElementById('qr-data') as HTMLInputElement | HTMLTextAreaElement;
+  const sizeInput = document.getElementById('qr-size') as HTMLInputElement;
+  const correctionSelect = document.getElementById('qr-correction') as HTMLSelectElement;
+  const positionSelect = document.getElementById('qr-position') as HTMLSelectElement;
+  const typeSelect = document.getElementById('qr-type') as HTMLSelectElement;
+  
+  const label = labelInput?.value.trim();
+  const data = dataInput?.value.trim();
+  
+  if (!label || !data) {
+    showToast('Please fill all required fields', 'warning');
+    return;
+  }
+  
+  // Format data based on type
+  let formattedData = data;
+  if (typeSelect?.value === 'upi') {
+    const upiName = (document.getElementById('qr-upi-name') as HTMLInputElement)?.value || '';
+    formattedData = `upi://pay?pa=${data}&pn=${encodeURIComponent(upiName)}`;
+  }
   
   try {
-    await window.posAPI.templates.addQRCode(templateId, {
+    await window.posAPI.templates.addQRCode(currentTemplateForQR, {
       label,
-      data,
-      errorCorrectionLevel: 'M',
-      size: 150
+      data: formattedData,
+      errorCorrectionLevel: (correctionSelect?.value || 'M') as any,
+      size: parseInt(sizeInput?.value || '150')
     });
     
     showToast('QR code added successfully', 'success');
-    await editTemplate(templateId);
+    closeQRModal();
+    await editTemplate(currentTemplateForQR);
   } catch (error: any) {
     showToast('Failed to add QR code: ' + error.message, 'error');
   }
 }
 
-async function removeQRCode(assetId: number) {
-  if (!confirm('Remove this QR code?')) return;
+async function removeQRCode(assetId: number, templateId: number) {
+  if (!confirm('Are you sure you want to remove this QR code?')) return;
   
   try {
     await window.posAPI.templates.removeAsset(assetId);
     showToast('QR code removed', 'success');
-    // Refresh the current template editor
-    const templateId = parseInt((document.querySelector('#template-form h4') as HTMLElement)?.getAttribute('data-template-id') || '0');
-    if (templateId) {
+    await editTemplate(templateId);
+  } catch (error: any) {
+    showToast('Failed to remove QR code: ' + error.message, 'error');
+  }
+}
+
+async function removeLogo(templateId: number) {
+  if (!confirm('Are you sure you want to remove the logo?')) return;
+  
+  try {
+    const assets = await window.posAPI.templates.getAssets(templateId);
+    const logoAsset = assets.find(a => a.type === 'logo');
+    
+    if (logoAsset) {
+      await window.posAPI.templates.removeAsset(logoAsset.id);
+      showToast('Logo removed', 'success');
       await editTemplate(templateId);
     }
   } catch (error: any) {
-    showToast('Failed to remove QR code: ' + error.message, 'error');
+    showToast('Failed to remove logo: ' + error.message, 'error');
   }
 }
 
@@ -3047,33 +3797,164 @@ async function previewTemplate(templateId: number) {
     
     if (!modal || !contentDiv) return;
     
-    // Generate a sample invoice preview
-    contentDiv.innerHTML = '<p>Loading preview...</p>';
+    contentDiv.innerHTML = '<div style="text-align: center; padding: 2rem;">Loading preview...</div>';
     modal.style.display = 'block';
+    
+    // Get template data
+    const template = await window.posAPI.templates.getById(templateId);
+    const assets = await window.posAPI.templates.getAssets(templateId);
+    
+    if (!template) {
+      contentDiv.innerHTML = '<p>Template not found</p>';
+      return;
+    }
+    
+    const headerData = JSON.parse(template.header_json || '{}');
+    const footerData = JSON.parse(template.footer_json || '{}');
     
     // Create sample data for preview
     const sampleOrder = {
       id: 'SAMPLE-001',
       created_at: new Date().toISOString(),
-      customer: { name: 'John Doe', phone: '+91 9876543210' },
+      customer: { name: 'John Doe', phone: '+91 9876543210', email: 'john@example.com' },
       items: [
-        { name: 'Sample Item 1', quantity: 2, unit_price: 100, line_total: 200 },
-        { name: 'Sample Item 2', quantity: 1, unit_price: 150, line_total: 150 }
+        { name: 'Product A', quantity: 2, unit_price: 100, line_total: 200 },
+        { name: 'Service B', quantity: 1, unit_price: 150, line_total: 150 },
+        { name: 'Item C', quantity: 3, unit_price: 75, line_total: 225 }
       ],
-      subtotal: 350,
-      tax_total: 0,
-      grand_total: 350
+      subtotal: 575,
+      tax_total: 103.50,
+      grand_total: 678.50
     };
     
-    // TODO: Generate actual preview HTML using the template
-    contentDiv.innerHTML = `
-      <iframe style="width: 100%; height: 600px; border: 1px solid #ddd;" 
-              srcdoc="<html><body><h2>Invoice Preview</h2><p>Template preview will be rendered here with sample data</p></body></html>">
-      </iframe>
+    // Generate preview HTML
+    const previewHtml = `
+      <div style="max-width: 800px; margin: 0 auto; background: white; padding: 2rem; font-family: Arial, sans-serif;">
+        <!-- Header -->
+        <div style="border-bottom: 2px solid #333; padding-bottom: 1rem; margin-bottom: 1rem;">
+          ${assets.find(a => a.type === 'logo') ? 
+            '<div style="text-align: center; margin-bottom: 1rem;"><img src="/placeholder-logo.png" alt="Logo" style="max-height: 80px;"></div>' : ''
+          }
+          <h1 style="margin: 0; color: #333;">${escapeHtml(headerData.businessName || 'Your Business Name')}</h1>
+          <p style="margin: 0.25rem 0; color: #666;">${escapeHtml(headerData.businessAddress || 'Your Address')}</p>
+          ${headerData.businessPhone ? `<p style="margin: 0.25rem 0; color: #666;">Phone: ${escapeHtml(headerData.businessPhone)}</p>` : ''}
+          ${headerData.businessEmail ? `<p style="margin: 0.25rem 0; color: #666;">Email: ${escapeHtml(headerData.businessEmail)}</p>` : ''}
+          ${headerData.businessTaxId ? `<p style="margin: 0.25rem 0; color: #666;">GSTIN: ${escapeHtml(headerData.businessTaxId)}</p>` : ''}
+        </div>
+        
+        <!-- Invoice Details -->
+        <div style="display: flex; justify-content: space-between; margin-bottom: 2rem;">
+          <div>
+            <h3 style="margin: 0 0 0.5rem 0;">Bill To:</h3>
+            <p style="margin: 0.25rem 0;">${sampleOrder.customer.name}</p>
+            <p style="margin: 0.25rem 0;">${sampleOrder.customer.phone}</p>
+            <p style="margin: 0.25rem 0;">${sampleOrder.customer.email}</p>
+          </div>
+          <div style="text-align: right;">
+            <h3 style="margin: 0 0 0.5rem 0;">Invoice #${sampleOrder.id}</h3>
+            <p style="margin: 0.25rem 0;">Date: ${new Date(sampleOrder.created_at).toLocaleDateString()}</p>
+          </div>
+        </div>
+        
+        <!-- Items Table -->
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 2rem;">
+          <thead>
+            <tr style="background: #f5f5f5;">
+              <th style="padding: 0.5rem; text-align: left; border-bottom: 2px solid #333;">Item</th>
+              <th style="padding: 0.5rem; text-align: center; border-bottom: 2px solid #333;">Qty</th>
+              <th style="padding: 0.5rem; text-align: right; border-bottom: 2px solid #333;">Price</th>
+              <th style="padding: 0.5rem; text-align: right; border-bottom: 2px solid #333;">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${sampleOrder.items.map(item => `
+              <tr>
+                <td style="padding: 0.5rem; border-bottom: 1px solid #ddd;">${item.name}</td>
+                <td style="padding: 0.5rem; text-align: center; border-bottom: 1px solid #ddd;">${item.quantity}</td>
+                <td style="padding: 0.5rem; text-align: right; border-bottom: 1px solid #ddd;">₹${item.unit_price.toFixed(2)}</td>
+                <td style="padding: 0.5rem; text-align: right; border-bottom: 1px solid #ddd;">₹${item.line_total.toFixed(2)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        
+        <!-- Totals -->
+        <div style="display: flex; justify-content: flex-end; margin-bottom: 2rem;">
+          <div style="width: 300px;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+              <span>Subtotal:</span>
+              <strong>₹${sampleOrder.subtotal.toFixed(2)}</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+              <span>Tax (18%):</span>
+              <strong>₹${sampleOrder.tax_total.toFixed(2)}</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 1.25rem; padding-top: 0.5rem; border-top: 2px solid #333;">
+              <strong>Total:</strong>
+              <strong>₹${sampleOrder.grand_total.toFixed(2)}</strong>
+            </div>
+          </div>
+        </div>
+        
+        <!-- QR Codes -->
+        ${assets.filter(a => a.type === 'qr').length > 0 ? `
+          <div style="display: flex; gap: 1rem; justify-content: center; margin-bottom: 2rem;">
+            ${assets.filter(a => a.type === 'qr').map(qr => {
+              const meta = JSON.parse(qr.meta_json);
+              return `
+                <div style="text-align: center;">
+                  <div style="width: 100px; height: 100px; border: 1px solid #ddd; display: flex; align-items: center; justify-content: center;">
+                    QR Code
+                  </div>
+                  <small>${escapeHtml(meta.label)}</small>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        ` : ''}
+        
+        <!-- Footer -->
+        <div style="text-align: center; padding-top: 1rem; border-top: 1px solid #ddd; color: #666;">
+          <p>${escapeHtml(footerData.footerText || headerData.footerText || 'Thank you for your business!')}</p>
+          ${footerData.termsConditions ? `<p style="font-size: 0.9rem;">${escapeHtml(footerData.termsConditions)}</p>` : ''}
+        </div>
+      </div>
     `;
+    
+    contentDiv.innerHTML = previewHtml;
   } catch (error: any) {
     showToast('Failed to preview template: ' + error.message, 'error');
   }
+}
+
+function printPreviewTemplate() {
+  const contentDiv = document.getElementById('template-preview-content');
+  if (!contentDiv) return;
+  
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) {
+    showToast('Please allow popups to print', 'warning');
+    return;
+  }
+  
+  printWindow.document.write(`
+    <html>
+      <head>
+        <title>Template Preview</title>
+        <style>
+          body { font-family: Arial, sans-serif; }
+          @media print {
+            body { margin: 0; }
+          }
+        </style>
+      </head>
+      <body>
+        ${contentDiv.innerHTML}
+        <script>window.print(); window.close();</script>
+      </body>
+    </html>
+  `);
+  printWindow.document.close();
 }
 
 function closeTemplatePreview() {
