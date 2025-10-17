@@ -162,112 +162,161 @@ async function renderPOS() {
   contentArea.innerHTML = `
     <h2 class="mb-4">Point of Sale</h2>
     
-    <div style="display: grid; grid-template-columns: 1fr 400px; gap: 1.5rem;">
-      <!-- Left: Items Entry -->
-      <div class="card">
-        <div class="card-header">
-          <h3 class="card-title">Add Items</h3>
-        </div>
-        
-        <form id="add-item-form" class="mb-4">
-          <div style="display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 1rem; align-items: end;">
-            <div class="form-group">
-              <label>Item Name</label>
-              <input type="text" id="item-name" required>
-            </div>
-            <div class="form-group">
-              <label>Quantity</label>
-              <input type="number" id="item-quantity" min="0.01" step="0.01" value="1" required>
-            </div>
-            <div class="form-group">
-              <label>Unit Price (₹)</label>
-              <input type="number" id="item-price" min="0" step="0.01" required>
-            </div>
-            <button type="submit" class="btn btn-primary">Add</button>
+    <div style="display: grid; grid-template-columns: 1fr 380px; gap: 1.5rem;">
+      <!-- Left Side: Main POS Workflow -->
+      <div>
+        <!-- Customer Selection at Top -->
+        <div class="card mb-3">
+          <div class="card-header">
+            <h3 class="card-title">Customer Information</h3>
           </div>
-        </form>
-        
-        <div id="items-list">
-          <p class="text-center" style="color: var(--color-text-tertiary); padding: 2rem;">
-            No items added yet
-          </p>
+          <div style="padding: 1rem;">
+            <div class="form-group" style="position: relative;">
+              <label>Customer Name</label>
+              <input type="text" id="customer-search" placeholder="Search existing customer or type new name..." autocomplete="off">
+              <div id="customer-suggestions" style="display: none; position: absolute; top: 100%; left: 0; right: 0; z-index: 1000;"></div>
+            </div>
+            
+            <div id="selected-customer" style="display: none; margin-top: 1rem; padding: 1rem; background: var(--color-bg-tertiary); border-radius: 8px;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                  <strong id="customer-name-display" style="font-size: 1.1rem;"></strong>
+                  <div id="customer-details" style="font-size: 0.9rem; color: var(--color-text-secondary); margin-top: 0.25rem;"></div>
+                </div>
+                <button class="btn btn-sm btn-secondary" onclick="clearCustomer()">Change</button>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
 
-      <!-- Left: Frequent Orders -->
-      <div class="card">
-        <div class="card-header">
-          <h3 class="card-title">Frequent Items</h3>
+        <!-- Items Entry -->
+        <div class="card mb-3">
+          <div class="card-header">
+            <h3 class="card-title">Add Items</h3>
+          </div>
+          <div style="padding: 1rem;">
+            <form id="add-item-form" class="mb-3">
+              <div style="display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 0.75rem; align-items: end;">
+                <div class="form-group">
+                  <label>Item Name</label>
+                  <input type="text" id="item-name" placeholder="Enter item name" required autocomplete="off">
+                </div>
+                <div class="form-group">
+                  <label>Quantity</label>
+                  <input type="number" id="item-quantity" min="0.01" step="0.01" value="1" required>
+                </div>
+                <div class="form-group">
+                  <label>Unit Price (₹)</label>
+                  <input type="number" id="item-price" min="0" step="0.01" placeholder="0.00" required>
+                </div>
+                <button type="submit" class="btn btn-primary" style="padding: 0.5rem 1.5rem;">+ Add</button>
+              </div>
+            </form>
+            
+            <div id="items-list">
+              <p class="text-center" style="color: var(--color-text-tertiary); padding: 2rem;">
+                No items added yet. Start by adding items above.
+              </p>
+            </div>
+          </div>
         </div>
-        <div style="padding: 1rem;">
-          <form id="save-frequent-form" class="mb-3" style="display:flex; gap:.5rem;">
-            <input type="text" id="frequent-label" placeholder="Label for current items" style="flex:1;">
-            <button type="submit" class="btn btn-secondary">Save</button>
-          </form>
-          <div id="frequent-orders-list">
-            <p class="text-center" style="color: var(--color-text-tertiary);">No frequent items yet</p>
+
+        <!-- Quick Access Panels -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+          <!-- Frequent Items -->
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">Frequent Items</h3>
+            </div>
+            <div style="padding: 1rem;">
+              <form id="save-frequent-form" class="mb-2" style="display:flex; gap:.5rem;">
+                <input type="text" id="frequent-label" placeholder="Save current as..." style="flex:1;" autocomplete="off">
+                <button type="submit" class="btn btn-sm btn-secondary">Save</button>
+              </form>
+              <div id="frequent-orders-list" style="max-height: 200px; overflow-y: auto;">
+                <p class="text-center" style="color: var(--color-text-tertiary); padding: 1rem;">No saved templates yet</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Open Orders -->
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">Open Orders</h3>
+            </div>
+            <div style="padding: 1rem;">
+              <form id="save-open-form" style="display:flex; gap:.5rem; margin-bottom:.5rem;">
+                <input id="open-name" type="text" placeholder="Save as draft..." style="flex:1;" autocomplete="off" />
+                <button class="btn btn-sm btn-secondary" type="submit">Save</button>
+              </form>
+              <div id="open-orders-list" style="max-height: 200px; overflow-y: auto;">
+                <p class="text-center" style="color: var(--color-text-tertiary); padding: 1rem;">No open orders</p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
       
-      <!-- Right: Order Summary -->
-      <div>
-        <div class="card mb-4">
-          <div class="card-header">
-            <h3 class="card-title">Customer</h3>
-          </div>
-          
-          <div class="form-group">
-            <label>Customer Name</label>
-            <input type="text" id="customer-search" placeholder="Search or add new...">
-            <div id="customer-suggestions" style="display: none;"></div>
-          </div>
-          
-          <div id="selected-customer" style="display: none;">
-            <p><strong id="customer-name-display"></strong></p>
-            <button class="btn btn-sm btn-secondary" onclick="clearCustomer()">Clear</button>
-          </div>
-        </div>
-        
+      <!-- Right Side: Order Summary & Actions -->
+      <div style="position: sticky; top: 1rem; height: fit-content;">
         <div class="card">
           <div class="card-header">
             <h3 class="card-title">Order Summary</h3>
           </div>
           
-          <div style="margin-bottom: 1rem;">
-            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
-              <span>Subtotal:</span>
-              <strong id="order-subtotal">₹0.00</strong>
+          <div style="padding: 1.5rem;">
+            <!-- Order Totals -->
+            <div style="margin-bottom: 1.5rem;">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 0.75rem; font-size: 1rem;">
+                <span>Subtotal:</span>
+                <strong id="order-subtotal">₹0.00</strong>
+              </div>
+              <div id="tax-row" style="display: flex; justify-content: space-between; margin-bottom: 0.75rem; font-size: 1rem;">
+                <span>Tax (<span id="tax-rate">0</span>%):</span>
+                <strong id="order-tax">₹0.00</strong>
+              </div>
+              <div style="display: flex; justify-content: space-between; font-size: 1.5rem; padding-top: 1rem; margin-top: 1rem; border-top: 2px solid var(--color-border);">
+                <strong>Total:</strong>
+                <strong id="order-total" style="color: var(--color-primary);">₹0.00</strong>
+              </div>
             </div>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
-              <span>Tax:</span>
-              <strong id="order-tax">₹0.00</strong>
+            
+            <!-- Order Stats -->
+            <div style="margin-bottom: 1.5rem; padding: 1rem; background: var(--color-bg-tertiary); border-radius: 8px;">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                <span style="color: var(--color-text-secondary);">Items:</span>
+                <strong id="item-count">0</strong>
+              </div>
+              <div style="display: flex; justify-content: space-between;">
+                <span style="color: var(--color-text-secondary);">Total Quantity:</span>
+                <strong id="total-quantity">0</strong>
+              </div>
             </div>
-            <div style="display: flex; justify-content: space-between; font-size: 1.25rem; padding-top: 0.5rem; border-top: 2px solid var(--color-border);">
-              <strong>Total:</strong>
-              <strong id="order-total" style="color: var(--color-primary);">₹0.00</strong>
+            
+            <!-- Action Buttons -->
+            <button id="finalize-btn" class="btn btn-success btn-block mb-2" onclick="finalizeOrder()" style="font-size: 1.1rem; padding: 0.75rem;">
+              <strong>Finalize & Print</strong>
+            </button>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+              <button class="btn btn-secondary" onclick="printPreview()">
+                Preview
+              </button>
+              <button class="btn btn-secondary" onclick="clearOrder()">
+                Clear All
+              </button>
             </div>
           </div>
-          
-          <button id="finalize-btn" class="btn btn-success btn-block mb-2" onclick="finalizeOrder()">
-            Finalize & Print
-          </button>
-          <button class="btn btn-secondary btn-block" onclick="clearOrder()">
-            Clear Order
-          </button>
         </div>
 
-        <div class="card">
-          <div class="card-header">
-            <h3 class="card-title">Open Orders</h3>
-          </div>
-          <div style="padding: 1rem;">
-            <form id="save-open-form" style="display:flex; gap:.5rem; margin-bottom:.5rem;">
-              <input id="open-name" type="text" placeholder="Ticket name" style="flex:1;" />
-              <button class="btn btn-secondary" type="submit">Save</button>
-            </form>
-            <div id="open-orders-list">
-              <p class="text-center" style="color: var(--color-text-tertiary);">No open orders</p>
+        <!-- Keyboard Shortcuts Help -->
+        <div class="card mt-3">
+          <div style="padding: 1rem; font-size: 0.85rem;">
+            <strong style="display: block; margin-bottom: 0.5rem;">Shortcuts:</strong>
+            <div style="color: var(--color-text-secondary);">
+              <div>Alt+N - New Item</div>
+              <div>Alt+C - Customer Search</div>
+              <div>Alt+P - Print & Finalize</div>
+              <div>Esc - Clear Form</div>
             </div>
           </div>
         </div>
@@ -294,7 +343,7 @@ function initializePOS() {
     });
   }
 
-  // Customer search with debounce
+  // Customer search with debounce and add new functionality
   const searchInput = document.getElementById('customer-search') as HTMLInputElement | null;
   if (searchInput) {
     let timer: any = null;
@@ -306,6 +355,17 @@ function initializePOS() {
         return;
       }
       timer = setTimeout(() => customerSearch(q), 250);
+    });
+    
+    // Handle Enter key to add new customer if no selection
+    searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !selectedCustomer) {
+        e.preventDefault();
+        const name = searchInput.value.trim();
+        if (name) {
+          addNewCustomerFromPOS(name);
+        }
+      }
     });
   }
 
@@ -319,40 +379,116 @@ function initializePOS() {
   if (saveOpenForm) {
     saveOpenForm.addEventListener('submit', saveOpenFromCurrent);
   }
+  
+  // Setup keyboard shortcuts
+  setupPOSKeyboardShortcuts();
+}
+
+// Setup keyboard shortcuts for POS
+function setupPOSKeyboardShortcuts() {
+  document.addEventListener('keydown', (e) => {
+    // Only work when in POS page
+    if (currentPage !== 'pos') return;
+    
+    // Alt+N - Focus on new item
+    if (e.altKey && e.key === 'n') {
+      e.preventDefault();
+      document.getElementById('item-name')?.focus();
+    }
+    
+    // Alt+C - Focus on customer search
+    if (e.altKey && e.key === 'c') {
+      e.preventDefault();
+      document.getElementById('customer-search')?.focus();
+    }
+    
+    // Alt+P - Print & Finalize
+    if (e.altKey && e.key === 'p') {
+      e.preventDefault();
+      finalizeOrder();
+    }
+    
+    // Escape - Clear current form
+    if (e.key === 'Escape') {
+      const itemName = document.getElementById('item-name') as HTMLInputElement;
+      const itemQty = document.getElementById('item-quantity') as HTMLInputElement;
+      const itemPrice = document.getElementById('item-price') as HTMLInputElement;
+      
+      if (itemName && (itemName.value || itemQty.value !== '1' || itemPrice.value)) {
+        e.preventDefault();
+        itemName.value = '';
+        itemQty.value = '1';
+        itemPrice.value = '';
+        itemName.focus();
+      }
+    }
+  });
 }
 
 function addItemToOrder() {
-  const name = (document.getElementById('item-name') as HTMLInputElement).value;
-  const quantity = parseFloat((document.getElementById('item-quantity') as HTMLInputElement).value);
-  const unitPrice = parseFloat((document.getElementById('item-price') as HTMLInputElement).value);
+  const nameInput = document.getElementById('item-name') as HTMLInputElement;
+  const qtyInput = document.getElementById('item-quantity') as HTMLInputElement;
+  const priceInput = document.getElementById('item-price') as HTMLInputElement;
+  
+  const name = nameInput.value.trim();
+  const quantity = parseFloat(qtyInput.value);
+  const unitPrice = parseFloat(priceInput.value);
+  
+  if (!name) {
+    showToast('Please enter item name', 'error');
+    nameInput.focus();
+    return;
+  }
   
   if (quantity <= 0) {
     showToast('Quantity must be greater than 0', 'error');
+    qtyInput.focus();
     return;
   }
   
   if (unitPrice < 0) {
     showToast('Price cannot be negative', 'error');
+    priceInput.focus();
+    return;
+  }
+  
+  if (isNaN(unitPrice) || unitPrice === 0) {
+    showToast('Please enter a valid price', 'error');
+    priceInput.focus();
     return;
   }
   
   const lineTotal = quantity * unitPrice;
   
-  currentItems.push({
-    name,
-    quantity,
-    unit_price: unitPrice,
-    line_total: lineTotal
-  });
+  // Check if item already exists and ask to update
+  const existingIndex = currentItems.findIndex(item => item.name.toLowerCase() === name.toLowerCase());
+  if (existingIndex >= 0) {
+    if (confirm(`Item "${name}" already exists. Do you want to add to the existing quantity?`)) {
+      currentItems[existingIndex].quantity += quantity;
+      currentItems[existingIndex].line_total = currentItems[existingIndex].quantity * currentItems[existingIndex].unit_price;
+    } else {
+      return;
+    }
+  } else {
+    currentItems.push({
+      name,
+      quantity,
+      unit_price: unitPrice,
+      line_total: lineTotal
+    });
+  }
   
   updateItemsList();
   updateOrderTotals();
   
-  // Clear form
-  (document.getElementById('item-name') as HTMLInputElement).value = '';
-  (document.getElementById('item-quantity') as HTMLInputElement).value = '1';
-  (document.getElementById('item-price') as HTMLInputElement).value = '';
-  document.getElementById('item-name')?.focus();
+  // Clear form and show success feedback
+  nameInput.value = '';
+  qtyInput.value = '1';
+  priceInput.value = '';
+  nameInput.focus();
+  
+  // Quick flash feedback
+  showToast(`Added ${quantity} x ${name}`, 'success');
 }
 
 function updateItemsList() {
@@ -401,15 +537,39 @@ function removeItem(index: number) {
 async function updateOrderTotals() {
   const subtotal = currentItems.reduce((sum, item) => sum + item.line_total, 0);
   
-  // Get tax settings
+  // Get tax settings - using default tax rate of 18% when enabled
   const settings = await window.posAPI.settings.get();
-  const taxRate = settings.tax_enabled ? 0 : 0; // Tax disabled by default
+  const DEFAULT_TAX_RATE = 18; // Default 18% GST rate
+  const taxRatePercent = settings.tax_enabled ? DEFAULT_TAX_RATE : 0;
+  const taxRate = taxRatePercent / 100; // Convert percentage to decimal
   const taxTotal = subtotal * taxRate;
   const grandTotal = subtotal + taxTotal;
   
+  // Update totals
   document.getElementById('order-subtotal')!.textContent = `₹${subtotal.toFixed(2)}`;
   document.getElementById('order-tax')!.textContent = `₹${taxTotal.toFixed(2)}`;
   document.getElementById('order-total')!.textContent = `₹${grandTotal.toFixed(2)}`;
+  
+  // Update tax rate display
+  const taxRateElem = document.getElementById('tax-rate');
+  if (taxRateElem) {
+    taxRateElem.textContent = taxRatePercent.toString();
+  }
+  
+  // Update item stats
+  const itemCount = document.getElementById('item-count');
+  const totalQty = document.getElementById('total-quantity');
+  if (itemCount) itemCount.textContent = currentItems.length.toString();
+  if (totalQty) {
+    const totalQuantity = currentItems.reduce((sum, item) => sum + item.quantity, 0);
+    totalQty.textContent = totalQuantity.toFixed(2);
+  }
+  
+  // Show/hide tax row based on settings
+  const taxRow = document.getElementById('tax-row');
+  if (taxRow) {
+    taxRow.style.display = settings.tax_enabled ? 'flex' : 'none';
+  }
 }
 
 function clearOrder() {
@@ -422,9 +582,101 @@ function clearOrder() {
 
 function clearCustomer() {
   selectedCustomer = null;
-  document.getElementById('selected-customer')!.style.display = 'none';
-  (document.getElementById('customer-search') as HTMLInputElement).value = '';
+  const selectedDiv = document.getElementById('selected-customer');
+  if (selectedDiv) selectedDiv.style.display = 'none';
+  const searchInput = document.getElementById('customer-search') as HTMLInputElement;
+  if (searchInput) {
+    searchInput.value = '';
+    searchInput.focus(); // Focus back on search for better UX
+  }
   hideCustomerSuggestions();
+}
+
+// Print Preview function
+async function printPreview() {
+  if (currentItems.length === 0) {
+    showToast('No items to preview', 'warning');
+    return;
+  }
+  
+  try {
+    const settings = await window.posAPI.settings.get();
+    const subtotal = currentItems.reduce((sum, item) => sum + item.line_total, 0);
+    const DEFAULT_TAX_RATE = 18; // Default 18% GST rate
+    const taxRatePercent = settings.tax_enabled ? DEFAULT_TAX_RATE : 0;
+    const taxRate = taxRatePercent / 100;
+    const taxTotal = subtotal * taxRate;
+    const grandTotal = subtotal + taxTotal;
+    
+    // Create preview modal
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.style.display = 'block';
+    modal.style.zIndex = '9999';
+    
+    modal.innerHTML = `
+      <div class="modal-content" style="max-width: 600px; max-height: 90vh; overflow-y: auto;">
+        <div class="modal-header">
+          <h3>Order Preview</h3>
+          <button onclick="this.closest('.modal').remove()">&times;</button>
+        </div>
+        <div style="padding: 1.5rem;">
+          <div style="margin-bottom: 1rem;">
+            <h4>Customer: ${selectedCustomer?.name || 'Walk-in Customer'}</h4>
+            ${selectedCustomer?.phone ? `<p>Phone: ${selectedCustomer.phone}</p>` : ''}
+            ${selectedCustomer?.email ? `<p>Email: ${selectedCustomer.email}</p>` : ''}
+          </div>
+          
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Qty</th>
+                <th>Unit Price</th>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${currentItems.map(item => `
+                <tr>
+                  <td>${item.name}</td>
+                  <td>${item.quantity}</td>
+                  <td>₹${item.unit_price.toFixed(2)}</td>
+                  <td>₹${item.line_total.toFixed(2)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          
+          <div style="margin-top: 1.5rem; text-align: right;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+              <span>Subtotal:</span>
+              <strong>₹${subtotal.toFixed(2)}</strong>
+            </div>
+            ${settings.tax_enabled ? `
+              <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                <span>Tax (${taxRatePercent}%):</span>
+                <strong>₹${taxTotal.toFixed(2)}</strong>
+              </div>
+            ` : ''}
+            <div style="display: flex; justify-content: space-between; font-size: 1.25rem; padding-top: 0.5rem; border-top: 2px solid var(--color-border);">
+              <strong>Total:</strong>
+              <strong style="color: var(--color-primary);">₹${grandTotal.toFixed(2)}</strong>
+            </div>
+          </div>
+          
+          <div style="margin-top: 2rem; display: flex; gap: 1rem; justify-content: flex-end;">
+            <button class="btn btn-secondary" onclick="this.closest('.modal').remove()">Close</button>
+            <button class="btn btn-primary" onclick="this.closest('.modal').remove(); finalizeOrder()">Finalize & Print</button>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    document.body.appendChild(modal);
+  } catch (error: any) {
+    showToast('Failed to generate preview: ' + error.message, 'error');
+  }
 }
 
 async function finalizeOrder() {
@@ -436,7 +688,9 @@ async function finalizeOrder() {
   try {
     const settings = await window.posAPI.settings.get();
     const subtotal = currentItems.reduce((sum, item) => sum + item.line_total, 0);
-    const taxRate = settings.tax_enabled ? 0 : 0;
+    const DEFAULT_TAX_RATE = 18; // Default 18% GST rate
+    const taxRatePercent = settings.tax_enabled ? DEFAULT_TAX_RATE : 0;
+    const taxRate = taxRatePercent / 100;
     const taxTotal = subtotal * taxRate;
     const grandTotal = subtotal + taxTotal;
     
@@ -1832,20 +2086,40 @@ async function customerSearch(q: string) {
     const results = await window.posAPI.customers.search(q);
     const box = document.getElementById('customer-suggestions');
     if (!box) return;
-    if (!results || results.length === 0) {
-      box.style.display = 'none';
-      box.innerHTML = '';
-      return;
+    
+    // Always show the dropdown with "Add New" option
+    let content = '';
+    
+    if (results && results.length > 0) {
+      content = results.map((c: any) => `
+        <div class="list-item" style="padding:.75rem 1rem; cursor:pointer; border-bottom: 1px solid var(--color-border);" 
+             onclick="selectCustomer(${c.id}, '${String(c.name).replace(/'/g, "&#39;")}', '${String(c.phone || '').replace(/'/g, "&#39;")}', '${String(c.email || '').replace(/'/g, "&#39;")}')" 
+             onmouseover="this.style.background='var(--color-bg-secondary)'" 
+             onmouseout="this.style.background='transparent'">
+          <div><strong>${c.name}</strong></div>
+          <div style="font-size:.85rem; color: var(--color-text-secondary);">${c.phone || ''} ${c.email ? ' · ' + c.email : ''}</div>
+        </div>
+      `).join('');
     }
+    
+    // Add "Create New Customer" option at the bottom
+    content += `
+      <div class="list-item" style="padding:.75rem 1rem; cursor:pointer; background: var(--color-bg-tertiary); border-top: 2px solid var(--color-primary);" 
+           onclick="addNewCustomerFromPOS('${q.replace(/'/g, "&#39;")}')" 
+           onmouseover="this.style.background='var(--color-primary-light)'" 
+           onmouseout="this.style.background='var(--color-bg-tertiary)'">
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <strong style="color: var(--color-primary);">+ Add New Customer</strong>
+          ${q ? `<span style="color: var(--color-text-secondary);">"${q}"</span>` : ''}
+        </div>
+        <div style="font-size:.85rem; color: var(--color-text-secondary);">Click to create new customer</div>
+      </div>
+    `;
+    
     box.innerHTML = `
-      <div class="card" style="position: absolute; z-index: 10; width: 100%;">
-        <div style="max-height: 220px; overflow: auto;">
-          ${results.map((c: any) => `
-            <div class="list-item" style="padding:.5rem 1rem; cursor:pointer;" onclick="selectCustomer(${c.id}, '${String(c.name).replace(/'/g, "&#39;")}')">
-              <div><strong>${c.name}</strong></div>
-              <div style="font-size:.85rem; color: var(--color-text-secondary);">${c.phone || ''} ${c.email ? ' · ' + c.email : ''}</div>
-            </div>
-          `).join('')}
+      <div class="card" style="box-shadow: 0 4px 12px rgba(0,0,0,0.15); border: 1px solid var(--color-border);">
+        <div style="max-height: 300px; overflow: auto;">
+          ${content}
         </div>
       </div>
     `;
@@ -1858,16 +2132,50 @@ function hideCustomerSuggestions() {
   if (box) { box.style.display = 'none'; box.innerHTML = ''; }
 }
 
-function selectCustomer(id: number, name: string) {
-  selectedCustomer = { id, name };
+function selectCustomer(id: number, name: string, phone?: string, email?: string) {
+  selectedCustomer = { id, name, phone, email };
   const sec = document.getElementById('selected-customer');
   if (sec) {
     (document.getElementById('customer-name-display') as HTMLElement).textContent = name;
+    const detailsElem = document.getElementById('customer-details');
+    if (detailsElem) {
+      const details = [];
+      if (phone) details.push(phone);
+      if (email) details.push(email);
+      detailsElem.textContent = details.join(' · ') || 'Walk-in Customer';
+    }
     sec.style.display = 'block';
   }
   hideCustomerSuggestions();
   const input = document.getElementById('customer-search') as HTMLInputElement | null;
   if (input) input.value = '';
+  
+  // Focus back to item name for smooth workflow
+  document.getElementById('item-name')?.focus();
+}
+
+// New function to add customer directly from POS
+async function addNewCustomerFromPOS(name: string) {
+  if (!name.trim()) {
+    showToast('Please enter a customer name', 'warning');
+    return;
+  }
+  
+  try {
+    // Quick add customer with just the name
+    const customer = await window.posAPI.customers.create({
+      name: name.trim(),
+      phone: '',
+      email: '',
+      gstin: '',
+      address: ''
+    });
+    
+    showToast(`Customer "${customer.name}" added successfully!`, 'success');
+    selectCustomer(customer.id, customer.name, customer.phone, customer.email);
+  } catch (error: any) {
+    showToast('Failed to add customer: ' + error.message, 'error');
+  }
 }
 
 // Frequent orders helpers
@@ -1877,17 +2185,36 @@ async function loadFrequentOrders() {
     if (!list) return;
     const items = await window.posAPI.frequentOrders.getAll(currentUser?.id);
     if (!items || items.length === 0) {
-      list.innerHTML = '<p class="text-center" style="color: var(--color-text-tertiary);">No frequent items yet</p>';
+      list.innerHTML = '<p class="text-center" style="color: var(--color-text-tertiary); padding: 1rem;">No saved templates yet</p>';
       return;
     }
     list.innerHTML = `
-      <div style="display:flex; flex-wrap: wrap; gap: .5rem;">
+      <div style="display:flex; flex-direction: column; gap: .5rem;">
         ${items.map((fo: any) => `
-          <button class="btn btn-sm" onclick="applyFrequent(${fo.id})">${fo.label}</button>
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; border: 1px solid var(--color-border); border-radius: 4px;">
+            <button class="btn btn-sm btn-primary" onclick="applyFrequent(${fo.id})" style="flex: 1; margin-right: 0.5rem;">
+              ${fo.label}
+            </button>
+            <button class="btn btn-sm btn-danger" onclick="deleteFrequent(${fo.id})" title="Delete">
+              ×
+            </button>
+          </div>
         `).join('')}
       </div>
     `;
   } catch {}
+}
+
+// Delete frequent order
+async function deleteFrequent(id: number) {
+  try {
+    if (!confirm('Delete this template?')) return;
+    await window.posAPI.frequentOrders.delete(id);
+    showToast('Template deleted', 'success');
+    loadFrequentOrders();
+  } catch (err: any) {
+    showToast('Failed to delete template: ' + (err.message || err), 'error');
+  }
 }
 
 async function applyFrequent(id: number) {
@@ -2020,9 +2347,12 @@ async function deleteOpenOrder(id: number) {
 }
 
 (window as any).selectCustomer = selectCustomer;
+(window as any).addNewCustomerFromPOS = addNewCustomerFromPOS;
 (window as any).applyFrequent = applyFrequent;
+(window as any).deleteFrequent = deleteFrequent;
 (window as any).applyOpenOrder = applyOpenOrder;
 (window as any).deleteOpenOrder = deleteOpenOrder;
+(window as any).printPreview = printPreview;
 (window as any).showCreateUserModal = showCreateUserModal;
 (window as any).closeCreateUserModal = closeCreateUserModal;
 (window as any).toggleUserStatus = toggleUserStatus;
