@@ -483,7 +483,7 @@ export interface IPCApi {
 
   // Dashboard
   dashboard: {
-    getStats: (period: 'today' | '7days' | '30days') => Promise<{
+    getStats: (period: 'today' | 'yesterday' | '7days' | '30days') => Promise<{
       orderCount: number;
       revenue: number;
       trend: Array<{ date: string; revenue: number; count: number }>;

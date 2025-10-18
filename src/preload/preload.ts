@@ -179,7 +179,7 @@ const api: IPCApi = {
   },
 
   dashboard: {
-    getStats: (period: 'today' | '7days' | '30days') => 
+    getStats: (period: 'today' | 'yesterday' | '7days' | '30days') => 
       ipcRenderer.invoke('dashboard:getStats', period),
     getRecentOrders: (limit: number) => ipcRenderer.invoke('dashboard:getRecentOrders', limit),
   },

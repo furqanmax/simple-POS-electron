@@ -3,16 +3,23 @@ import { dbManager } from '../database';
 import { OrderWithItems } from '../../shared/types';
 
 export function registerDashboardHandlers(ipcMain: IpcMain): void {
-  ipcMain.handle('dashboard:getStats', async (_, period: 'today' | '7days' | '30days'): Promise<any> => {
+  ipcMain.handle('dashboard:getStats', async (_, period: 'today' | 'yesterday' | '7days' | '30days'): Promise<any> => {
     const db = dbManager.getDB();
     
     let startDate: Date;
-    const endDate = new Date();
+    let endDate = new Date();
     
     switch (period) {
       case 'today':
         startDate = new Date();
         startDate.setHours(0, 0, 0, 0);
+        break;
+      case 'yesterday':
+        startDate = new Date();
+        startDate.setDate(startDate.getDate() - 1);
+        startDate.setHours(0, 0, 0, 0);
+        endDate = new Date();
+        endDate.setHours(0, 0, 0, 0);
         break;
       case '7days':
         startDate = new Date();
@@ -25,6 +32,7 @@ export function registerDashboardHandlers(ipcMain: IpcMain): void {
     }
     
     const startDateStr = startDate.toISOString();
+    const endDateStr = endDate.toISOString();
     
     // Get order count and revenue
     const stats = db.prepare(`
@@ -32,8 +40,8 @@ export function registerDashboardHandlers(ipcMain: IpcMain): void {
         COUNT(*) as orderCount,
         COALESCE(SUM(grand_total), 0) as revenue
       FROM orders
-      WHERE created_at >= ? AND status = 'finalized'
-    `).get(startDateStr) as any;
+      WHERE created_at >= ? AND created_at < ? AND status = 'finalized'
+    `).get(startDateStr, endDateStr) as any;
     
     // Get trend data (daily breakdown)
     const trend = db.prepare(`
@@ -42,10 +50,10 @@ export function registerDashboardHandlers(ipcMain: IpcMain): void {
         COUNT(*) as count,
         COALESCE(SUM(grand_total), 0) as revenue
       FROM orders
-      WHERE created_at >= ? AND status = 'finalized'
+      WHERE created_at >= ? AND created_at < ? AND status = 'finalized'
       GROUP BY DATE(created_at)
       ORDER BY date
-    `).all(startDateStr) as any[];
+    `).all(startDateStr, endDateStr) as any[];
     
     // Get overdue installments count
     const overdueCount = db.prepare(`

@@ -331,7 +331,7 @@ export interface IPCApi {
         uploadImage: (sourcePath: string, templateId: number) => Promise<string>;
     };
     dashboard: {
-        getStats: (period: 'today' | '7days' | '30days') => Promise<{
+        getStats: (period: 'today' | 'yesterday' | '7days' | '30days') => Promise<{
             orderCount: number;
             revenue: number;
             trend: Array<{

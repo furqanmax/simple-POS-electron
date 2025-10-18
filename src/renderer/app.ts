@@ -74,83 +74,529 @@ async function renderDashboard() {
   if (!contentArea) return;
   
   contentArea.innerHTML = `
-    <h2 class="mb-4">Dashboard</h2>
+    <h2 class="mb-4">Dashboard Overview</h2>
     
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
-      <div class="card">
-        <h3>Today's Orders</h3>
-        <div id="today-orders" style="font-size: 2rem; font-weight: bold; color: var(--color-primary);">-</div>
+    <!-- Quick Stats Cards -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+      <div class="card" style="background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark)); color: white;">
+        <h3 style="color: white; opacity: 0.9;">Today's Orders</h3>
+        <div id="today-orders" style="font-size: 2.5rem; font-weight: bold;">-</div>
+        <div id="today-orders-change" style="font-size: 0.9rem; opacity: 0.8; margin-top: 0.5rem;"></div>
       </div>
-      <div class="card">
-        <h3>Today's Revenue</h3>
-        <div id="today-revenue" style="font-size: 2rem; font-weight: bold; color: var(--color-success);">-</div>
+      <div class="card" style="background: linear-gradient(135deg, var(--color-success), #27ae60); color: white;">
+        <h3 style="color: white; opacity: 0.9;">Today's Revenue</h3>
+        <div id="today-revenue" style="font-size: 2.5rem; font-weight: bold;">-</div>
+        <div id="today-revenue-change" style="font-size: 0.9rem; opacity: 0.8; margin-top: 0.5rem;"></div>
       </div>
-      <div class="card">
-        <h3>7-Day Revenue</h3>
-        <div id="week-revenue" style="font-size: 2rem; font-weight: bold; color: var(--color-info);">-</div>
+      <div class="card" style="background: linear-gradient(135deg, var(--color-info), #2980b9); color: white;">
+        <h3 style="color: white; opacity: 0.9;">This Month</h3>
+        <div id="month-revenue" style="font-size: 2.5rem; font-weight: bold;">-</div>
+        <div id="month-orders" style="font-size: 0.9rem; opacity: 0.8; margin-top: 0.5rem;"></div>
       </div>
-      <div class="card">
-        <h3>Overdue Installments</h3>
-        <div id="overdue-count" style="font-size: 2rem; font-weight: bold; color: var(--color-danger);">-</div>
+      <div class="card" style="background: linear-gradient(135deg, #9b59b6, #8e44ad); color: white;">
+        <h3 style="color: white; opacity: 0.9;">Top Customer</h3>
+        <div id="top-customer" style="font-size: 1.3rem; font-weight: bold; word-break: break-word;">-</div>
+        <div id="top-customer-total" style="font-size: 0.9rem; opacity: 0.8; margin-top: 0.5rem;"></div>
+      </div>
+      <div class="card" style="background: linear-gradient(135deg, #f39c12, #e67e22); color: white;">
+        <h3 style="color: white; opacity: 0.9;">Avg Order Value</h3>
+        <div id="avg-order-value" style="font-size: 2.5rem; font-weight: bold;">-</div>
+        <div id="avg-order-items" style="font-size: 0.9rem; opacity: 0.8; margin-top: 0.5rem;"></div>
+      </div>
+      <div class="card" style="background: linear-gradient(135deg, var(--color-danger), #c0392b); color: white;">
+        <h3 style="color: white; opacity: 0.9;">Pending Orders</h3>
+        <div id="pending-orders" style="font-size: 2.5rem; font-weight: bold;">-</div>
+        <div id="pending-value" style="font-size: 0.9rem; opacity: 0.8; margin-top: 0.5rem;"></div>
       </div>
     </div>
     
-    <div class="card">
-      <div class="card-header">
-        <h3 class="card-title">Recent Orders</h3>
+    <!-- Charts Row -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+      <!-- Revenue Chart -->
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title">Revenue Trend (Last 7 Days)</h3>
+        </div>
+        <div style="padding: 1rem; position: relative; height: 300px;">
+          <canvas id="revenue-chart"></canvas>
+        </div>
       </div>
-      <div id="recent-orders-list">Loading...</div>
+      
+      <!-- Orders by Category -->
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title">Sales Distribution</h3>
+        </div>
+        <div style="padding: 1rem; position: relative; height: 300px;">
+          <canvas id="category-chart"></canvas>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Additional Stats Row -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+      <!-- Peak Hours Chart -->
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title">Peak Business Hours</h3>
+        </div>
+        <div style="padding: 1rem; position: relative; height: 250px;">
+          <canvas id="hourly-chart"></canvas>
+        </div>
+      </div>
+      
+      <!-- Top Products -->
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title">Top Selling Items</h3>
+        </div>
+        <div id="top-products-list" style="padding: 1rem;">
+          <div style="text-align: center; padding: 2rem; color: var(--color-text-tertiary);">Loading...</div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Recent Orders & Customer Activity -->
+    <div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 1rem;">
+      <!-- Recent Orders -->
+      <div class="card">
+        <div class="card-header">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h3 class="card-title">Recent Orders</h3>
+            <button class="btn btn-sm btn-secondary" onclick="renderHistory()">View All</button>
+          </div>
+        </div>
+        <div id="recent-orders-list" style="max-height: 400px; overflow-y: auto;">Loading...</div>
+      </div>
+      
+      <!-- Customer Activity -->
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title">Recent Customers</h3>
+        </div>
+        <div id="recent-customers-list" style="max-height: 400px; overflow-y: auto;">
+          <div style="text-align: center; padding: 2rem; color: var(--color-text-tertiary);">Loading...</div>
+        </div>
+      </div>
     </div>
   `;
   
+  // Load all dashboard data
+  loadDashboardData();
+}
+
+// Chart storage for cleanup
+let dashboardCharts: any = {};
+
+async function loadDashboardData() {
   try {
-    // Load today's stats
+    // Load stats
     const todayStats = await window.posAPI.dashboard.getStats('today');
+    const yesterdayStats = await window.posAPI.dashboard.getStats('yesterday');
     const weekStats = await window.posAPI.dashboard.getStats('7days');
+    const monthStats = await window.posAPI.dashboard.getStats('30days');
     
-    document.getElementById('today-orders')!.textContent = todayStats.orderCount.toString();
-    document.getElementById('today-revenue')!.textContent = `₹${todayStats.revenue.toFixed(2)}`;
-    document.getElementById('week-revenue')!.textContent = `₹${weekStats.revenue.toFixed(2)}`;
-    document.getElementById('overdue-count')!.textContent = todayStats.overdueInstallments.toString();
+    // Update cards with animations
+    updateStatCard('today-orders', todayStats.orderCount, 
+                   `vs yesterday: ${todayStats.orderCount - (yesterdayStats?.orderCount || 0) >= 0 ? '+' : ''}${todayStats.orderCount - (yesterdayStats?.orderCount || 0)}`);
+    
+    updateStatCard('today-revenue', `₹${todayStats.revenue.toFixed(2)}`,
+                   `vs yesterday: ₹${(todayStats.revenue - (yesterdayStats?.revenue || 0)).toFixed(2)}`);
+    
+    updateStatCard('month-revenue', `₹${monthStats.revenue.toFixed(2)}`,
+                   `${monthStats.orderCount} orders this month`);
+    
+    // Calculate and display average order value
+    const avgOrderValue = monthStats.orderCount > 0 ? monthStats.revenue / monthStats.orderCount : 0;
+    updateStatCard('avg-order-value', `₹${avgOrderValue.toFixed(2)}`,
+                   `Based on ${monthStats.orderCount} orders`);
+    
+    // Load all orders for analysis
+    const allOrders = await window.posAPI.orders.getAll();
+    
+    // Calculate pending orders
+    const pendingOrders = allOrders.filter((o: any) => o.status === 'draft');
+    const pendingValue = pendingOrders.reduce((sum: number, o: any) => sum + (o.grand_total || 0), 0);
+    updateStatCard('pending-orders', pendingOrders.length.toString(),
+                   `Value: ₹${pendingValue.toFixed(2)}`);
+    
+    // Find top customer
+    const customerTotals: { [key: string]: { name: string, total: number, count: number } } = {};
+    allOrders.forEach((order: any) => {
+      if (order.customer?.name) {
+        if (!customerTotals[order.customer.name]) {
+          customerTotals[order.customer.name] = { name: order.customer.name, total: 0, count: 0 };
+        }
+        customerTotals[order.customer.name].total += order.grand_total || 0;
+        customerTotals[order.customer.name].count++;
+      }
+    });
+    
+    const topCustomer = Object.values(customerTotals)
+      .sort((a, b) => b.total - a.total)[0];
+    
+    if (topCustomer) {
+      updateStatCard('top-customer', topCustomer.name,
+                     `₹${topCustomer.total.toFixed(2)} (${topCustomer.count} orders)`);
+    } else {
+      updateStatCard('top-customer', 'No data', '');
+    }
     
     // Load recent orders
     const recentOrders = await window.posAPI.dashboard.getRecentOrders(10);
+    displayRecentOrders(recentOrders);
     
-    const recentOrdersList = document.getElementById('recent-orders-list');
-    if (recentOrdersList) {
-      if (recentOrders.length === 0) {
-        recentOrdersList.innerHTML = '<p>No recent orders</p>';
-      } else {
-        recentOrdersList.innerHTML = `
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Order ID</th>
-                <th>Customer</th>
-                <th>Date</th>
-                <th>Total</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${recentOrders.map((order: any) => `
-                <tr>
-                  <td>#${order.id}</td>
-                  <td>${order.customer?.name || 'Walk-in'}</td>
-                  <td>${new Date(order.created_at).toLocaleDateString()}</td>
-                  <td>₹${order.grand_total.toFixed(2)}</td>
-                  <td>
-                    <button class="btn btn-sm btn-primary" onclick="printOrder(${order.id})">Print</button>
-                  </td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        `;
-      }
-    }
+    // Load recent customers
+    const customers = await window.posAPI.customers.getAll();
+    displayRecentCustomers(customers.slice(0, 10));
+    
+    // Load and display charts
+    await loadChartData(allOrders);
+    
+    // Load top products
+    await loadTopProducts(allOrders);
+    
   } catch (error: any) {
-    showToast('Failed to load dashboard: ' + error.message, 'error');
+    showToast('Failed to load dashboard data: ' + error.message, 'error');
+  }
+}
+
+function updateStatCard(elementId: string, mainValue: string | number, subValue: string) {
+  const mainElement = document.getElementById(elementId);
+  const subElement = document.getElementById(elementId + '-change') || 
+                     document.getElementById(elementId + '-total') ||
+                     document.getElementById(elementId + '-orders') ||
+                     document.getElementById(elementId + '-items') ||
+                     document.getElementById(elementId + '-value');
+  
+  if (mainElement) {
+    mainElement.textContent = mainValue.toString();
+    // Add animation
+    mainElement.style.transform = 'scale(0.95)';
+    setTimeout(() => {
+      mainElement.style.transform = 'scale(1)';
+    }, 100);
+  }
+  
+  if (subElement) {
+    subElement.textContent = subValue;
+  }
+}
+
+function displayRecentOrders(orders: any[]) {
+  const recentOrdersList = document.getElementById('recent-orders-list');
+  if (!recentOrdersList) return;
+  
+  if (orders.length === 0) {
+    recentOrdersList.innerHTML = '<p style="text-align: center; padding: 2rem;">No recent orders</p>';
+  } else {
+    recentOrdersList.innerHTML = `
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Order #</th>
+            <th>Customer</th>
+            <th>Time</th>
+            <th>Total</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${orders.slice(0, 10).map((order: any) => `
+            <tr>
+              <td><strong>#${order.id}</strong></td>
+              <td>${order.customer?.name || 'Walk-in'}</td>
+              <td>${formatTimeAgo(new Date(order.created_at))}</td>
+              <td><strong>₹${order.grand_total.toFixed(2)}</strong></td>
+              <td>
+                <span class="badge badge-${order.status === 'finalized' ? 'success' : 'secondary'}">
+                  ${order.status}
+                </span>
+              </td>
+              <td>
+                <button class="btn btn-sm btn-primary" onclick="previewOrder(${order.id})">View</button>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+}
+
+function displayRecentCustomers(customers: any[]) {
+  const customersList = document.getElementById('recent-customers-list');
+  if (!customersList) return;
+  
+  if (customers.length === 0) {
+    customersList.innerHTML = '<p style="text-align: center; padding: 2rem;">No customers yet</p>';
+  } else {
+    customersList.innerHTML = `
+      <div style="padding: 0.5rem;">
+        ${customers.map((customer: any) => `
+          <div style="padding: 0.75rem; border-bottom: 1px solid var(--color-border);">
+            <div style="display: flex; justify-content: space-between; align-items: start;">
+              <div>
+                <div style="font-weight: bold;">${escapeHtml(customer.name)}</div>
+                <div style="font-size: 0.85rem; color: var(--color-text-secondary);">
+                  ${customer.phone || 'No phone'}
+                </div>
+              </div>
+              <div style="text-align: right;">
+                <div style="font-size: 0.85rem; color: var(--color-text-tertiary);">
+                  ${formatTimeAgo(new Date(customer.created_at))}
+                </div>
+              </div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+}
+
+function formatTimeAgo(date: Date): string {
+  const now = new Date();
+  const diff = now.getTime() - date.getTime();
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+  
+  if (minutes < 60) return `${minutes}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days < 7) return `${days}d ago`;
+  return date.toLocaleDateString();
+}
+
+async function loadChartData(orders: any[]) {
+  // Destroy existing charts
+  Object.values(dashboardCharts).forEach((chart: any) => {
+    if (chart) chart.destroy();
+  });
+  dashboardCharts = {};
+  
+  // Prepare data for last 7 days revenue chart
+  const last7Days = [];
+  const revenueData = [];
+  const ordersData = [];
+  
+  for (let i = 6; i >= 0; i--) {
+    const date = new Date();
+    date.setDate(date.getDate() - i);
+    date.setHours(0, 0, 0, 0);
+    
+    const nextDate = new Date(date);
+    nextDate.setDate(nextDate.getDate() + 1);
+    
+    const dayOrders = orders.filter((o: any) => {
+      const orderDate = new Date(o.created_at);
+      return orderDate >= date && orderDate < nextDate && o.status === 'finalized';
+    });
+    
+    const dayRevenue = dayOrders.reduce((sum: number, o: any) => sum + (o.grand_total || 0), 0);
+    
+    last7Days.push(date.toLocaleDateString('en', { weekday: 'short', month: 'short', day: 'numeric' }));
+    revenueData.push(dayRevenue);
+    ordersData.push(dayOrders.length);
+  }
+  
+  // Create revenue trend chart
+  const revenueCtx = (document.getElementById('revenue-chart') as HTMLCanvasElement)?.getContext('2d');
+  if (revenueCtx) {
+    dashboardCharts.revenue = new (window as any).Chart(revenueCtx, {
+      type: 'line',
+      data: {
+        labels: last7Days,
+        datasets: [{
+          label: 'Revenue (₹)',
+          data: revenueData,
+          borderColor: '#3498db',
+          backgroundColor: 'rgba(52, 152, 219, 0.1)',
+          tension: 0.3,
+          fill: true
+        }, {
+          label: 'Orders',
+          data: ordersData,
+          borderColor: '#2ecc71',
+          backgroundColor: 'rgba(46, 204, 113, 0.1)',
+          tension: 0.3,
+          fill: true,
+          yAxisID: 'y1'
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {
+          mode: 'index',
+          intersect: false,
+        },
+        scales: {
+          y: {
+            type: 'linear',
+            display: true,
+            position: 'left',
+            ticks: {
+              callback: function(value: any) {
+                return '₹' + value.toFixed(0);
+              }
+            }
+          },
+          y1: {
+            type: 'linear',
+            display: true,
+            position: 'right',
+            grid: {
+              drawOnChartArea: false,
+            }
+          }
+        }
+      }
+    });
+  }
+  
+  // Create hourly distribution chart
+  const hourlyData = new Array(24).fill(0);
+  orders.forEach((order: any) => {
+    if (order.status === 'finalized') {
+      const hour = new Date(order.created_at).getHours();
+      hourlyData[hour]++;
+    }
+  });
+  
+  const hourlyCtx = (document.getElementById('hourly-chart') as HTMLCanvasElement)?.getContext('2d');
+  if (hourlyCtx) {
+    dashboardCharts.hourly = new (window as any).Chart(hourlyCtx, {
+      type: 'bar',
+      data: {
+        labels: Array.from({length: 24}, (_, i) => `${i}:00`),
+        datasets: [{
+          label: 'Orders by Hour',
+          data: hourlyData,
+          backgroundColor: 'rgba(155, 89, 182, 0.8)',
+          borderColor: '#9b59b6',
+          borderWidth: 1
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: {
+              stepSize: 1
+            }
+          }
+        }
+      }
+    });
+  }
+  
+  // Create category/sales distribution chart
+  const customerTypes = { 'Walk-in': 0, 'Registered': 0 };
+  const statusTypes = { 'Completed': 0, 'Pending': 0 };
+  
+  orders.forEach((order: any) => {
+    if (order.customer?.name) {
+      customerTypes['Registered'] += order.grand_total || 0;
+    } else {
+      customerTypes['Walk-in'] += order.grand_total || 0;
+    }
+    
+    if (order.status === 'finalized') {
+      statusTypes['Completed'] += order.grand_total || 0;
+    } else {
+      statusTypes['Pending'] += order.grand_total || 0;
+    }
+  });
+  
+  const categoryCtx = (document.getElementById('category-chart') as HTMLCanvasElement)?.getContext('2d');
+  if (categoryCtx) {
+    dashboardCharts.category = new (window as any).Chart(categoryCtx, {
+      type: 'doughnut',
+      data: {
+        labels: ['Walk-in Sales', 'Registered Customer Sales'],
+        datasets: [{
+          data: [customerTypes['Walk-in'], customerTypes['Registered']],
+          backgroundColor: ['#f39c12', '#3498db'],
+          borderWidth: 2,
+          borderColor: '#fff'
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'bottom'
+          },
+          tooltip: {
+            callbacks: {
+              label: function(context: any) {
+                const label = context.label || '';
+                const value = '₹' + context.parsed.toFixed(2);
+                const total = context.dataset.data.reduce((a: number, b: number) => a + b, 0);
+                const percentage = ((context.parsed / total) * 100).toFixed(1);
+                return `${label}: ${value} (${percentage}%)`;
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+}
+
+async function loadTopProducts(orders: any[]) {
+  const productSales: { [key: string]: { name: string, quantity: number, revenue: number } } = {};
+  
+  orders.forEach((order: any) => {
+    if (order.items && order.status === 'finalized') {
+      order.items.forEach((item: any) => {
+        const key = item.name;
+        if (!productSales[key]) {
+          productSales[key] = { name: item.name, quantity: 0, revenue: 0 };
+        }
+        productSales[key].quantity += item.quantity || 0;
+        productSales[key].revenue += item.line_total || 0;
+      });
+    }
+  });
+  
+  const topProducts = Object.values(productSales)
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, 5);
+  
+  const topProductsList = document.getElementById('top-products-list');
+  if (!topProductsList) return;
+  
+  if (topProducts.length === 0) {
+    topProductsList.innerHTML = '<p style="text-align: center; padding: 2rem;">No sales data yet</p>';
+  } else {
+    topProductsList.innerHTML = `
+      <div>
+        ${topProducts.map((product, index) => `
+          <div style="display: flex; align-items: center; padding: 0.75rem; border-bottom: 1px solid var(--color-border);">
+            <div style="width: 30px; height: 30px; background: ${['#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#e74c3c'][index]}; 
+                        color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; 
+                        font-weight: bold; margin-right: 1rem;">
+              ${index + 1}
+            </div>
+            <div style="flex: 1;">
+              <div style="font-weight: bold;">${escapeHtml(product.name)}</div>
+              <div style="font-size: 0.85rem; color: var(--color-text-secondary);">
+                Sold: ${product.quantity} units
+              </div>
+            </div>
+            <div style="text-align: right;">
+              <div style="font-weight: bold; color: var(--color-success);">₹${product.revenue.toFixed(2)}</div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
   }
 }
 
@@ -686,7 +1132,17 @@ async function finalizeOrder() {
   }
   
   try {
+    // Get settings and default template
     const settings = await window.posAPI.settings.get();
+    let defaultTemplate = null;
+    
+    try {
+      defaultTemplate = await window.posAPI.templates.getDefault();
+    } catch (e) {
+      console.log('No default template set, using system defaults');
+    }
+    
+    // Calculate order totals
     const subtotal = currentItems.reduce((sum, item) => sum + item.line_total, 0);
     const DEFAULT_TAX_RATE = 18; // Default 18% GST rate
     const taxRatePercent = settings.tax_enabled ? DEFAULT_TAX_RATE : 0;
@@ -694,7 +1150,8 @@ async function finalizeOrder() {
     const taxTotal = subtotal * taxRate;
     const grandTotal = subtotal + taxTotal;
     
-    const order = await window.posAPI.orders.create({
+    // Create order with template information
+    const orderData: any = {
       user_id: currentUser.id,
       customer_id: selectedCustomer?.id,
       subtotal,
@@ -703,12 +1160,25 @@ async function finalizeOrder() {
       grand_total: grandTotal,
       status: 'draft',
       is_installment: false
-    }, currentItems);
+    };
+    
+    // Add template information if available
+    if (defaultTemplate) {
+      orderData.template_id = defaultTemplate.id;
+      orderData.template_data = {
+        header_json: defaultTemplate.header_json,
+        footer_json: defaultTemplate.footer_json,
+        preferred_bill_size: defaultTemplate.preferred_bill_size,
+        preferred_layout: defaultTemplate.preferred_layout
+      };
+    }
+    
+    const order = await window.posAPI.orders.create(orderData, currentItems);
     
     // Finalize the order
     await window.posAPI.orders.finalize(order.id);
     
-    // Print
+    // Print using template settings
     const printed = await window.posAPI.print.printDirect(order.id);
     if (!printed) {
       const pdfPath = await window.posAPI.print.generatePDF(order.id);
@@ -746,50 +1216,489 @@ async function renderHistory() {
     <h2 class="mb-4">Order History</h2>
     
     <div class="card">
-      <div id="orders-list">Loading...</div>
+      <div class="card-header">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+          <h3 class="card-title">Orders</h3>
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <input type="date" id="filter-start-date" onchange="filterOrders()" style="padding: 0.25rem;" title="Start Date">
+            <input type="date" id="filter-end-date" onchange="filterOrders()" style="padding: 0.25rem;" title="End Date">
+            <select id="filter-status" onchange="filterOrders()" style="padding: 0.25rem;">
+              <option value="">All Status</option>
+              <option value="finalized">Finalized</option>
+              <option value="draft">Draft</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+            <button class="btn btn-sm btn-secondary" onclick="exportOrderHistory()">Export CSV</button>
+          </div>
+        </div>
+      </div>
+      <div id="orders-list" style="overflow-x: auto;">Loading...</div>
+    </div>
+    
+    <!-- Order Preview Modal -->
+    <div id="order-preview-modal" class="modal" style="display:none;">
+      <div class="modal-content" style="width: 90%; max-width: 900px; max-height: 90vh; overflow-y: auto;">
+        <div class="modal-header">
+          <h3>Order Preview</h3>
+          <span class="close" onclick="closeOrderPreview()">&times;</span>
+        </div>
+        <div id="order-preview-content" style="padding: 1rem;">
+          <!-- Preview will be rendered here -->
+        </div>
+        <div class="modal-footer" style="display: flex; gap: 1rem; justify-content: flex-end; padding: 1rem; border-top: 1px solid var(--color-border);">
+          <button class="btn btn-secondary" onclick="closeOrderPreview()">Close</button>
+          <button class="btn btn-primary" onclick="printOrderPreview()">Print</button>
+        </div>
+      </div>
     </div>
   `;
   
+  await loadOrderHistory();
+}
+
+async function loadOrderHistory(startDate?: string, endDate?: string, statusFilter?: string) {
   try {
     const orders = await window.posAPI.orders.getAll();
     
+    // Store globally for filtering
+    (window as any).allOrders = orders;
+    
+    // Apply filters
+    let filteredOrders = orders;
+    if (startDate) {
+      filteredOrders = filteredOrders.filter((o: any) => new Date(o.created_at) >= new Date(startDate));
+    }
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      filteredOrders = filteredOrders.filter((o: any) => new Date(o.created_at) <= end);
+    }
+    if (statusFilter) {
+      filteredOrders = filteredOrders.filter((o: any) => o.status === statusFilter);
+    }
+    
     const ordersList = document.getElementById('orders-list');
-    if (ordersList) {
-      if (orders.length === 0) {
-        ordersList.innerHTML = '<p>No orders found</p>';
-      } else {
-        ordersList.innerHTML = `
-          <table class="table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Date</th>
-                <th>Customer</th>
-                <th>Total</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${orders.map((order: any) => `
+    if (!ordersList) return;
+    
+    if (filteredOrders.length === 0) {
+      ordersList.innerHTML = `
+        <div style="text-align: center; padding: 3rem; color: var(--color-text-tertiary);">
+          <p>No orders found</p>
+          ${statusFilter || startDate || endDate ? '<p style="font-size: 0.9rem;">Try adjusting your filters</p>' : ''}
+        </div>
+      `;
+    } else {
+      ordersList.innerHTML = `
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Order #</th>
+              <th>Date & Time</th>
+              <th>Customer</th>
+              <th>Items</th>
+              <th>Total</th>
+              <th>Status</th>
+              <th style="min-width: 150px;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${filteredOrders.map((order: any) => {
+              const itemCount = order.items?.length || 0;
+              return `
                 <tr>
-                  <td>#${order.id}</td>
-                  <td>${new Date(order.created_at).toLocaleString()}</td>
-                  <td>${order.customer?.name || 'Walk-in'}</td>
-                  <td>₹${order.grand_total.toFixed(2)}</td>
-                  <td><span class="badge badge-${order.status === 'finalized' ? 'success' : 'secondary'}">${order.status}</span></td>
+                  <td><strong>#${order.id}</strong></td>
                   <td>
-                    <button class="btn btn-sm btn-primary" onclick="printOrder(${order.id})">Print</button>
+                    <div>${new Date(order.created_at).toLocaleDateString()}</div>
+                    <small style="color: var(--color-text-tertiary);">${new Date(order.created_at).toLocaleTimeString()}</small>
+                  </td>
+                  <td>
+                    ${order.customer ? `
+                      <div>${escapeHtml(order.customer.name || 'Customer')}</div>
+                      ${order.customer.phone ? `<small style="color: var(--color-text-tertiary);">${escapeHtml(order.customer.phone)}</small>` : ''}
+                    ` : '<span style="color: var(--color-text-tertiary);">Walk-in</span>'}
+                  </td>
+                  <td>${itemCount} item${itemCount !== 1 ? 's' : ''}</td>
+                  <td><strong>₹${(order.grand_total || 0).toFixed(2)}</strong></td>
+                  <td>
+                    <span class="badge badge-${order.status === 'finalized' ? 'success' : order.status === 'cancelled' ? 'danger' : 'secondary'}">
+                      ${order.status || 'unknown'}
+                    </span>
+                  </td>
+                  <td>
+                    <div style="display: flex; gap: 0.25rem;">
+                      <button class="btn btn-sm btn-secondary" onclick="previewOrder(${order.id})" title="Preview">
+                        <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                          <path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/>
+                          <path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/>
+                        </svg>
+                      </button>
+                      <button class="btn btn-sm btn-primary" onclick="printOrder(${order.id})" title="Print">
+                        <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                          <path d="M2.5 8a.5.5 0 1 0 0-1 .5.5 0 0 0 0 1z"/>
+                          <path d="M5 1a2 2 0 0 0-2 2v2H2a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h1v1a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-1h1a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-1V3a2 2 0 0 0-2-2H5zM4 3a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2H4V3zm1 5a2 2 0 0 0-2 2v1H2a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v-1a2 2 0 0 0-2-2H5zm7 2v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1z"/>
+                        </svg>
+                      </button>
+                    </div>
                   </td>
                 </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        `;
-      }
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+        <div style="padding: 1rem; text-align: center; border-top: 1px solid var(--color-border); color: var(--color-text-tertiary);">
+          Showing ${filteredOrders.length} of ${orders.length} orders
+        </div>
+      `;
     }
   } catch (error: any) {
     showToast('Failed to load orders: ' + error.message, 'error');
+    const ordersList = document.getElementById('orders-list');
+    if (ordersList) {
+      ordersList.innerHTML = `
+        <div style="text-align: center; padding: 3rem; color: var(--color-text-error);">
+          <p>Failed to load orders</p>
+          <p style="font-size: 0.9rem;">${escapeHtml(error.message || 'Unknown error')}</p>
+          <button class="btn btn-primary" onclick="loadOrderHistory()">Retry</button>
+        </div>
+      `;
+    }
+  }
+}
+
+function filterOrders() {
+  const startDate = (document.getElementById('filter-start-date') as HTMLInputElement)?.value;
+  const endDate = (document.getElementById('filter-end-date') as HTMLInputElement)?.value;
+  const statusFilter = (document.getElementById('filter-status') as HTMLSelectElement)?.value;
+  
+  loadOrderHistory(startDate, endDate, statusFilter);
+}
+
+async function previewOrder(orderId: number) {
+  try {
+    // Validate orderId
+    if (!orderId || orderId <= 0) {
+      showToast('Invalid order ID', 'error');
+      return;
+    }
+    
+    let modal = document.getElementById('order-preview-modal');
+    let contentDiv = document.getElementById('order-preview-content');
+    
+    // Create modal if it doesn't exist (e.g., when called from dashboard)
+    if (!modal) {
+      const modalHtml = `
+        <div id="order-preview-modal" class="modal" style="display:none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9999;">
+          <div class="modal-content" style="position: relative; width: 90%; max-width: 900px; max-height: 90vh; margin: 2rem auto; background: var(--color-bg-primary); border-radius: 8px; overflow: hidden;">
+            <div class="modal-header" style="padding: 1rem; border-bottom: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center;">
+              <h3 style="margin: 0;">Order Preview</h3>
+              <span class="close" onclick="closeOrderPreview()" style="cursor: pointer; font-size: 1.5rem; line-height: 1;">&times;</span>
+            </div>
+            <div id="order-preview-content" style="padding: 1rem; overflow-y: auto; max-height: calc(90vh - 120px);">
+              <!-- Preview will be rendered here -->
+            </div>
+            <div class="modal-footer" style="display: flex; gap: 1rem; justify-content: flex-end; padding: 1rem; border-top: 1px solid var(--color-border);">
+              <button class="btn btn-secondary" onclick="closeOrderPreview()">Close</button>
+              <button class="btn btn-primary" onclick="printOrderPreview()">Print</button>
+            </div>
+          </div>
+        </div>
+      `;
+      document.body.insertAdjacentHTML('beforeend', modalHtml);
+      
+      modal = document.getElementById('order-preview-modal');
+      contentDiv = document.getElementById('order-preview-content');
+    }
+    
+    if (!modal || !contentDiv) {
+      showToast('Failed to create preview modal', 'error');
+      return;
+    }
+    
+    contentDiv.innerHTML = '<div style="text-align: center; padding: 2rem;">Loading order details...</div>';
+    modal.style.display = 'block';
+    
+    // Get order details with proper error handling
+    const order = await window.posAPI.orders.getById(orderId).catch((err: any) => {
+      console.error('Error fetching order:', err);
+      return null;
+    });
+    
+    if (!order) {
+      contentDiv.innerHTML = `
+        <div style="text-align: center; padding: 3rem; color: var(--color-text-error);">
+          <h3>Order Not Found</h3>
+          <p>Order #${orderId} could not be loaded.</p>
+          <p style="font-size: 0.9rem; color: var(--color-text-tertiary);">It may have been deleted or you may not have permission to view it.</p>
+          <button class="btn btn-primary" onclick="closeOrderPreview()">Close</button>
+        </div>
+      `;
+      return;
+    }
+    
+    // Validate order has required data
+    if (!order.items || order.items.length === 0) {
+      console.warn('Order has no items:', order);
+    }
+    
+    // Get template if available
+    let template = null;
+    let headerData = {};
+    let footerData = {};
+    let assets: any[] = [];
+    
+    try {
+      // Try to get the default template (orders don't store template_id)
+      template = await window.posAPI.templates.getDefault();
+      
+      if (template) {
+        headerData = JSON.parse(template.header_json || '{}');
+        footerData = JSON.parse(template.footer_json || '{}');
+        assets = await window.posAPI.templates.getAssets(template.id);
+      }
+    } catch (e) {
+      console.log('No template available, using defaults');
+    }
+    
+    // Generate preview based on template or default layout
+    if (template) {
+      const dimensions = getBillSizeDimensions(template.preferred_bill_size);
+      const orderData = {
+        id: order.id.toString(),
+        created_at: order.created_at,
+        customer: order.customer || { name: 'Walk-in', phone: '', email: '' },
+        items: order.items || [],
+        subtotal: order.subtotal || 0,
+        tax_total: order.tax_total || 0,
+        grand_total: order.grand_total || 0
+      };
+      
+      const previewHtml = generateLayoutHTML(
+        template,
+        headerData,
+        footerData,
+        orderData,
+        assets,
+        dimensions
+      );
+      
+      contentDiv.innerHTML = `
+        <div style="background: #f5f5f5; padding: 1rem; overflow: auto;">
+          ${previewHtml}
+        </div>
+      `;
+    } else {
+      // Fallback to simple preview with better formatting
+      const statusColor = order.status === 'finalized' ? '#27ae60' : 
+                          order.status === 'cancelled' ? '#e74c3c' : '#f39c12';
+      
+      contentDiv.innerHTML = `
+        <div style="max-width: 800px; margin: 0 auto; background: white; padding: 2rem; font-family: Arial, sans-serif;">
+          <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 2rem;">
+            <div>
+              <h2 style="margin: 0;">Order #${order.id}</h2>
+              <p style="margin: 0.5rem 0; color: #666;">Date: ${new Date(order.created_at).toLocaleString()}</p>
+            </div>
+            <div style="text-align: right;">
+              <span style="padding: 0.25rem 0.75rem; background: ${statusColor}; color: white; border-radius: 4px; font-weight: bold;">
+                ${order.status?.toUpperCase() || 'UNKNOWN'}
+              </span>
+            </div>
+          </div>
+          
+          <div style="margin-bottom: 2rem; padding: 1rem; background: #f8f9fa; border-radius: 4px;">
+            <h4 style="margin: 0 0 0.5rem 0;">Customer Information</h4>
+            <p style="margin: 0.25rem 0;"><strong>Name:</strong> ${escapeHtml(order.customer?.name || 'Walk-in Customer')}</p>
+            ${order.customer?.phone ? `<p style="margin: 0.25rem 0;"><strong>Phone:</strong> ${escapeHtml(order.customer.phone)}</p>` : ''}
+            ${order.customer?.email ? `<p style="margin: 0.25rem 0;"><strong>Email:</strong> ${escapeHtml(order.customer.email)}</p>` : ''}
+            ${order.customer?.address ? `<p style="margin: 0.25rem 0;"><strong>Address:</strong> ${escapeHtml(order.customer.address)}</p>` : ''}
+          </div>
+          
+          ${order.items && order.items.length > 0 ? `
+            <table style="width: 100%; margin: 2rem 0; border-collapse: collapse;">
+              <thead>
+                <tr style="background: #f8f9fa;">
+                  <th style="text-align: left; padding: 0.75rem; border-bottom: 2px solid #dee2e6;">#</th>
+                  <th style="text-align: left; padding: 0.75rem; border-bottom: 2px solid #dee2e6;">Item</th>
+                  <th style="text-align: center; padding: 0.75rem; border-bottom: 2px solid #dee2e6;">Qty</th>
+                  <th style="text-align: right; padding: 0.75rem; border-bottom: 2px solid #dee2e6;">Unit Price</th>
+                  <th style="text-align: right; padding: 0.75rem; border-bottom: 2px solid #dee2e6;">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${order.items.map((item: any, index: number) => `
+                  <tr>
+                    <td style="padding: 0.75rem; border-bottom: 1px solid #dee2e6;">${index + 1}</td>
+                    <td style="padding: 0.75rem; border-bottom: 1px solid #dee2e6;">${escapeHtml(item.name || 'Unknown Item')}</td>
+                    <td style="text-align: center; padding: 0.75rem; border-bottom: 1px solid #dee2e6;">${Number(item.quantity || 0).toFixed(2)}</td>
+                    <td style="text-align: right; padding: 0.75rem; border-bottom: 1px solid #dee2e6;">₹${(item.unit_price || 0).toFixed(2)}</td>
+                    <td style="text-align: right; padding: 0.75rem; border-bottom: 1px solid #dee2e6;">₹${(item.line_total || 0).toFixed(2)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          ` : `
+            <div style="text-align: center; padding: 2rem; background: #f8f9fa; border-radius: 4px; color: #666;">
+              <p>No items in this order</p>
+            </div>
+          `}
+          
+          <div style="display: flex; justify-content: flex-end;">
+            <div style="width: 300px;">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                <span>Subtotal:</span>
+                <span>₹${(order.subtotal || 0).toFixed(2)}</span>
+              </div>
+              ${order.tax_total && order.tax_total > 0 ? `
+                <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                  <span>Tax (${order.tax_rate ? (order.tax_rate * 100).toFixed(0) : '0'}%):</span>
+                  <span>₹${order.tax_total.toFixed(2)}</span>
+                </div>
+              ` : ''}
+              <div style="display: flex; justify-content: space-between; font-size: 1.25rem; font-weight: bold; padding-top: 0.5rem; border-top: 2px solid #333;">
+                <span>Total:</span>
+                <span style="color: ${statusColor};">₹${(order.grand_total || 0).toFixed(2)}</span>
+              </div>
+            </div>
+          </div>
+          
+          ${order.user ? `
+            <div style="margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #dee2e6; color: #666; font-size: 0.9rem;">
+              <p style="margin: 0;">Processed by: ${escapeHtml(order.user.username || 'Unknown User')}</p>
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }
+    
+    // Store current order for printing
+    (window as any).currentPreviewOrder = order;
+    
+    // Add click outside to close
+    modal.onclick = function(event: any) {
+      if (event.target === modal) {
+        closeOrderPreview();
+      }
+    };
+    
+    // Add escape key to close
+    const escapeHandler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        closeOrderPreview();
+      }
+    };
+    // Store handler for proper cleanup
+    (window as any).orderPreviewEscapeHandler = escapeHandler;
+    document.addEventListener('keydown', escapeHandler);
+    
+  } catch (error: any) {
+    console.error('Preview error:', error);
+    showToast('Failed to preview order: ' + (error.message || 'Unknown error'), 'error');
+    
+    const contentDiv = document.getElementById('order-preview-content');
+    if (contentDiv) {
+      contentDiv.innerHTML = `
+        <div style="text-align: center; padding: 3rem; color: var(--color-text-error);">
+          <h3>Error Loading Order</h3>
+          <p style="margin: 1rem 0;">${escapeHtml(error.message || 'An unexpected error occurred')}</p>
+          <button class="btn btn-primary" onclick="closeOrderPreview()">Close</button>
+        </div>
+      `;
+    }
+  }
+}
+
+function closeOrderPreview() {
+  const modal = document.getElementById('order-preview-modal');
+  if (modal) {
+    modal.style.display = 'none';
+    // Remove click handler to prevent memory leaks
+    modal.onclick = null;
+  }
+  
+  // Clear the stored order
+  (window as any).currentPreviewOrder = null;
+  
+  // Remove any lingering event listeners
+  document.removeEventListener('keydown', (window as any).orderPreviewEscapeHandler);
+  (window as any).orderPreviewEscapeHandler = null;
+}
+
+function printOrderPreview() {
+  const order = (window as any).currentPreviewOrder;
+  if (order && order.id) {
+    printOrder(order.id);
+    closeOrderPreview();
+  } else {
+    showToast('No order to print', 'error');
+  }
+}
+
+async function duplicateOrder(orderId: number) {
+  try {
+    const order = await window.posAPI.orders.getById(orderId);
+    if (!order) {
+      showToast('Order not found', 'error');
+      return;
+    }
+    
+    // Set items to current order and switch to POS tab
+    currentItems = order.items.map((item: any) => ({
+      ...item,
+      id: Date.now() + Math.random() // Generate new temp IDs
+    }));
+    selectedCustomer = order.customer;
+    
+    // Switch to POS tab
+    renderPOS();
+    showToast('Order duplicated. Continue editing in POS.', 'success');
+  } catch (error: any) {
+    showToast('Failed to duplicate order: ' + error.message, 'error');
+  }
+}
+
+function exportOrderHistory() {
+  try {
+    const orders = (window as any).allOrders || [];
+    if (orders.length === 0) {
+      showToast('No orders to export', 'warning');
+      return;
+    }
+    
+    // Generate CSV
+    const csvRows = [
+      ['Order ID', 'Date', 'Time', 'Customer', 'Phone', 'Items', 'Subtotal', 'Tax', 'Total', 'Status'],
+      ...orders.map((order: any) => [
+        order.id,
+        new Date(order.created_at).toLocaleDateString(),
+        new Date(order.created_at).toLocaleTimeString(),
+        order.customer?.name || 'Walk-in',
+        order.customer?.phone || '',
+        order.items?.length || 0,
+        (order.subtotal || 0).toFixed(2),
+        (order.tax_total || 0).toFixed(2),
+        (order.grand_total || 0).toFixed(2),
+        order.status || 'unknown'
+      ])
+    ];
+    
+    const csvContent = csvRows.map(row => row.map((cell: any) => 
+      typeof cell === 'string' && cell.includes(',') ? `"${cell}"` : cell
+    ).join(',')).join('\n');
+    
+    // Download CSV
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `orders_${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    showToast('Orders exported successfully', 'success');
+  } catch (error: any) {
+    showToast('Failed to export orders: ' + error.message, 'error');
   }
 }
 
@@ -1414,13 +2323,28 @@ async function editTemplate(templateId: number) {
           <legend style="padding: 0 0.5rem; font-weight: bold;">Logo & Branding</legend>
           
           <div id="logo-section" style="margin-bottom: 1rem;">
-            ${assets.find((a: any) => a.type === 'logo') ? 
-              `<div style="padding: 1rem; background: var(--color-bg-tertiary); border-radius: 4px; margin-bottom: 0.5rem;">
-                <strong>✅ Logo uploaded</strong>
-                <button type="button" class="btn btn-sm btn-danger" style="float: right;" onclick="removeLogo(${templateId})">Remove</button>
-              </div>` : 
-              '<p style="color: var(--color-text-tertiary);">No logo uploaded</p>'
-            }
+            ${(() => {
+              const logoAsset = assets.find((a: any) => a.type === 'logo');
+              if (logoAsset) {
+                let logoPreview = '';
+                if (logoAsset.blob) {
+                  // blob is already base64 encoded from the backend
+                  const metaData = JSON.parse(logoAsset.meta_json || '{}');
+                  const mimeType = metaData.mimeType || 'image/png';
+                  const logoSrc = `data:${mimeType};base64,${logoAsset.blob}`;
+                  logoPreview = `<img src="${logoSrc}" alt="Logo preview" style="max-height: 60px; max-width: 150px; object-fit: contain; display: block; margin: 0 auto 0.5rem auto;">`;
+                }
+                return `
+                  <div style="padding: 1rem; background: var(--color-bg-tertiary); border-radius: 4px; margin-bottom: 0.5rem;">
+                    ${logoPreview}
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                      <strong>✅ Logo uploaded</strong>
+                      <button type="button" class="btn btn-sm btn-danger" onclick="removeLogo(${templateId})">Remove</button>
+                    </div>
+                  </div>`;
+              }
+              return '<p style="color: var(--color-text-tertiary);">No logo uploaded</p>';
+            })()}
             <button type="button" class="btn btn-sm btn-primary" onclick="uploadLogo(${templateId})">
               ${assets.find((a: any) => a.type === 'logo') ? 'Replace Logo' : 'Upload Logo'}
             </button>
@@ -2436,6 +3360,26 @@ async function checkLicenseUpdates() {
 (window as any).checkLicenseUpdates = checkLicenseUpdates;
 (window as any).togglePassword = togglePassword;
 
+// History page functions
+(window as any).renderHistory = renderHistory;
+(window as any).loadOrderHistory = loadOrderHistory;
+(window as any).filterOrders = filterOrders;
+(window as any).previewOrder = previewOrder;
+(window as any).closeOrderPreview = closeOrderPreview;
+(window as any).printOrderPreview = printOrderPreview;
+(window as any).duplicateOrder = duplicateOrder;
+(window as any).exportOrderHistory = exportOrderHistory;
+
+// Test preview function
+(window as any).testOrderPreview = async () => {
+  try {
+    // Test with a valid order ID (usually 1 if there are orders)
+    await previewOrder(1);
+    console.log('Preview test: Success');
+  } catch (error) {
+    console.error('Preview test failed:', error);
+  }
+};
 
 // Customers: create
 async function handleCreateCustomer(e: Event) {
@@ -3805,123 +4749,60 @@ async function previewTemplate(templateId: number) {
     const assets = await window.posAPI.templates.getAssets(templateId);
     
     if (!template) {
-      contentDiv.innerHTML = '<p>Template not found</p>';
+      contentDiv.innerHTML = '<p style="text-align: center; color: red;">Template not found</p>';
       return;
     }
     
     const headerData = JSON.parse(template.header_json || '{}');
     const footerData = JSON.parse(template.footer_json || '{}');
     
-    // Create sample data for preview
+    // Get current tax settings
+    const settings = await window.posAPI.settings.get();
+    const DEFAULT_TAX_RATE = 18; // Default 18% GST rate
+    const taxRate = settings.tax_enabled ? DEFAULT_TAX_RATE : 0;
+    
+    // Create sample data for preview with various test cases
     const sampleOrder = {
-      id: 'SAMPLE-001',
+      id: '001',
       created_at: new Date().toISOString(),
-      customer: { name: 'John Doe', phone: '+91 9876543210', email: 'john@example.com' },
+      customer: { 
+        name: selectedCustomer?.name || 'John Doe', 
+        phone: selectedCustomer?.phone || '+91 9876543210', 
+        email: selectedCustomer?.email || 'customer@example.com' 
+      },
       items: [
-        { name: 'Product A', quantity: 2, unit_price: 100, line_total: 200 },
-        { name: 'Service B', quantity: 1, unit_price: 150, line_total: 150 },
-        { name: 'Item C', quantity: 3, unit_price: 75, line_total: 225 }
+        { name: 'Long Product Name That Might Overflow In Compact Layouts', quantity: 2.5, unit_price: 100.99, line_total: 252.48 },
+        { name: 'Service Item B', quantity: 1, unit_price: 150, line_total: 150 },
+        { name: 'Product C', quantity: 3, unit_price: 75.50, line_total: 226.50 },
+        { name: 'Item D with Special Characters & Symbols', quantity: 0.5, unit_price: 200, line_total: 100 }
       ],
-      subtotal: 575,
-      tax_total: 103.50,
-      grand_total: 678.50
+      subtotal: 728.98,
+      tax_total: taxRate > 0 ? 728.98 * (taxRate / 100) : 0,
+      grand_total: 728.98 * (1 + taxRate / 100)
     };
     
-    // Generate preview HTML
-    const previewHtml = `
-      <div style="max-width: 800px; margin: 0 auto; background: white; padding: 2rem; font-family: Arial, sans-serif;">
-        <!-- Header -->
-        <div style="border-bottom: 2px solid #333; padding-bottom: 1rem; margin-bottom: 1rem;">
-          ${assets.find(a => a.type === 'logo') ? 
-            '<div style="text-align: center; margin-bottom: 1rem;"><img src="/placeholder-logo.png" alt="Logo" style="max-height: 80px;"></div>' : ''
-          }
-          <h1 style="margin: 0; color: #333;">${escapeHtml(headerData.businessName || 'Your Business Name')}</h1>
-          <p style="margin: 0.25rem 0; color: #666;">${escapeHtml(headerData.businessAddress || 'Your Address')}</p>
-          ${headerData.businessPhone ? `<p style="margin: 0.25rem 0; color: #666;">Phone: ${escapeHtml(headerData.businessPhone)}</p>` : ''}
-          ${headerData.businessEmail ? `<p style="margin: 0.25rem 0; color: #666;">Email: ${escapeHtml(headerData.businessEmail)}</p>` : ''}
-          ${headerData.businessTaxId ? `<p style="margin: 0.25rem 0; color: #666;">GSTIN: ${escapeHtml(headerData.businessTaxId)}</p>` : ''}
-        </div>
-        
-        <!-- Invoice Details -->
-        <div style="display: flex; justify-content: space-between; margin-bottom: 2rem;">
-          <div>
-            <h3 style="margin: 0 0 0.5rem 0;">Bill To:</h3>
-            <p style="margin: 0.25rem 0;">${sampleOrder.customer.name}</p>
-            <p style="margin: 0.25rem 0;">${sampleOrder.customer.phone}</p>
-            <p style="margin: 0.25rem 0;">${sampleOrder.customer.email}</p>
-          </div>
-          <div style="text-align: right;">
-            <h3 style="margin: 0 0 0.5rem 0;">Invoice #${sampleOrder.id}</h3>
-            <p style="margin: 0.25rem 0;">Date: ${new Date(sampleOrder.created_at).toLocaleDateString()}</p>
-          </div>
-        </div>
-        
-        <!-- Items Table -->
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 2rem;">
-          <thead>
-            <tr style="background: #f5f5f5;">
-              <th style="padding: 0.5rem; text-align: left; border-bottom: 2px solid #333;">Item</th>
-              <th style="padding: 0.5rem; text-align: center; border-bottom: 2px solid #333;">Qty</th>
-              <th style="padding: 0.5rem; text-align: right; border-bottom: 2px solid #333;">Price</th>
-              <th style="padding: 0.5rem; text-align: right; border-bottom: 2px solid #333;">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${sampleOrder.items.map(item => `
-              <tr>
-                <td style="padding: 0.5rem; border-bottom: 1px solid #ddd;">${item.name}</td>
-                <td style="padding: 0.5rem; text-align: center; border-bottom: 1px solid #ddd;">${item.quantity}</td>
-                <td style="padding: 0.5rem; text-align: right; border-bottom: 1px solid #ddd;">₹${item.unit_price.toFixed(2)}</td>
-                <td style="padding: 0.5rem; text-align: right; border-bottom: 1px solid #ddd;">₹${item.line_total.toFixed(2)}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-        
-        <!-- Totals -->
-        <div style="display: flex; justify-content: flex-end; margin-bottom: 2rem;">
-          <div style="width: 300px;">
-            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
-              <span>Subtotal:</span>
-              <strong>₹${sampleOrder.subtotal.toFixed(2)}</strong>
-            </div>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
-              <span>Tax (18%):</span>
-              <strong>₹${sampleOrder.tax_total.toFixed(2)}</strong>
-            </div>
-            <div style="display: flex; justify-content: space-between; font-size: 1.25rem; padding-top: 0.5rem; border-top: 2px solid #333;">
-              <strong>Total:</strong>
-              <strong>₹${sampleOrder.grand_total.toFixed(2)}</strong>
-            </div>
-          </div>
-        </div>
-        
-        <!-- QR Codes -->
-        ${assets.filter(a => a.type === 'qr').length > 0 ? `
-          <div style="display: flex; gap: 1rem; justify-content: center; margin-bottom: 2rem;">
-            ${assets.filter(a => a.type === 'qr').map(qr => {
-              const meta = JSON.parse(qr.meta_json);
-              return `
-                <div style="text-align: center;">
-                  <div style="width: 100px; height: 100px; border: 1px solid #ddd; display: flex; align-items: center; justify-content: center;">
-                    QR Code
-                  </div>
-                  <small>${escapeHtml(meta.label)}</small>
-                </div>
-              `;
-            }).join('')}
-          </div>
-        ` : ''}
-        
-        <!-- Footer -->
-        <div style="text-align: center; padding-top: 1rem; border-top: 1px solid #ddd; color: #666;">
-          <p>${escapeHtml(footerData.footerText || headerData.footerText || 'Thank you for your business!')}</p>
-          ${footerData.termsConditions ? `<p style="font-size: 0.9rem;">${escapeHtml(footerData.termsConditions)}</p>` : ''}
-        </div>
+    // Get dimensions based on bill size
+    const dimensions = getBillSizeDimensions(template.preferred_bill_size);
+    
+    // Generate layout-specific HTML
+    const previewHtml = generateLayoutHTML(
+      template,
+      headerData,
+      footerData,
+      sampleOrder,
+      assets,
+      dimensions
+    );
+    
+    // Add wrapper with background to show page boundaries
+    contentDiv.innerHTML = `
+      <div style="background: #f5f5f5; padding: 1rem; overflow: auto;">
+        ${previewHtml}
+      </div>
+      <div style="text-align: center; margin-top: 1rem; color: #666;">
+        <small>Preview: ${template.preferred_bill_size || 'A4'} - ${template.preferred_layout || 'Classic'} Layout</small>
       </div>
     `;
-    
-    contentDiv.innerHTML = previewHtml;
   } catch (error: any) {
     showToast('Failed to preview template: ' + error.message, 'error');
   }
@@ -3960,6 +4841,222 @@ function printPreviewTemplate() {
 function closeTemplatePreview() {
   const modal = document.getElementById('template-preview-modal');
   if (modal) modal.style.display = 'none';
+}
+
+// Helper function to get bill size dimensions
+function getBillSizeDimensions(billSize: string | undefined): { width: string; maxWidth: string; padding: string; fontSize: string } {
+  const sizeMap: { [key: string]: { width: string; maxWidth: string; padding: string; fontSize: string } } = {
+    'A3': { width: '297mm', maxWidth: '297mm', padding: '20mm', fontSize: '14pt' },
+    'A4': { width: '210mm', maxWidth: '210mm', padding: '15mm', fontSize: '12pt' },
+    'A5': { width: '148mm', maxWidth: '148mm', padding: '10mm', fontSize: '10pt' },
+    'Letter': { width: '8.5in', maxWidth: '8.5in', padding: '0.75in', fontSize: '12pt' },
+    'Legal': { width: '8.5in', maxWidth: '8.5in', padding: '0.75in', fontSize: '12pt' },
+    'Thermal80': { width: '80mm', maxWidth: '80mm', padding: '5mm', fontSize: '9pt' },
+    'Thermal58': { width: '58mm', maxWidth: '58mm', padding: '3mm', fontSize: '8pt' },
+    'Thermal57': { width: '57mm', maxWidth: '57mm', padding: '3mm', fontSize: '8pt' }
+  };
+  
+  return sizeMap[billSize || 'A4'] || sizeMap['A4'];
+}
+
+// Helper function to generate layout-specific HTML
+function generateLayoutHTML(
+  template: any, 
+  headerData: any, 
+  footerData: any, 
+  sampleOrder: any, 
+  assets: any[], 
+  dimensions: any
+): string {
+  const layout = template.preferred_layout || 'Classic';
+  const invoiceNumber = headerData.invoicePrefix || 'INV-';
+  
+  // Common styles based on layout
+  const layoutStyles: { [key: string]: { headerBorder: string; itemBg: string; showLogo: boolean; detailed: boolean } } = {
+    'Classic': { headerBorder: '2px solid #333', itemBg: '#f5f5f5', showLogo: true, detailed: true },
+    'Minimal': { headerBorder: '1px solid #ddd', itemBg: '#fafafa', showLogo: false, detailed: false },
+    'Compact': { headerBorder: 'none', itemBg: 'transparent', showLogo: false, detailed: false },
+    'Detailed': { headerBorder: '3px double #333', itemBg: '#f0f0f0', showLogo: true, detailed: true }
+  };
+  
+  const style = layoutStyles[layout as string] || layoutStyles['Classic'];
+  
+  // Handle edge cases for missing data
+  const businessName = headerData.businessName || 'Business Name Not Set';
+  const businessAddress = headerData.businessAddress || '';
+  
+  // Thermal receipt layout
+  if (template.preferred_bill_size?.startsWith('Thermal')) {
+    return `
+      <div style="width: ${dimensions.width}; max-width: ${dimensions.maxWidth}; margin: 0 auto; background: white; padding: ${dimensions.padding}; font-family: 'Courier New', monospace; font-size: ${dimensions.fontSize};">
+        <!-- Compact Header -->
+        <div style="text-align: center; margin-bottom: 10px;">
+          ${(() => {
+            const logoAsset = assets.find((a: any) => a.type === 'logo');
+            if (logoAsset && logoAsset.blob) {
+              const metaData = JSON.parse(logoAsset.meta_json || '{}');
+              const mimeType = metaData.mimeType || 'image/png';
+              const logoSrc = `data:${mimeType};base64,${logoAsset.blob}`;
+              return `<img src="${logoSrc}" alt="Logo" style="max-height: 40px; max-width: 100px; object-fit: contain; margin-bottom: 5px; display: block; margin-left: auto; margin-right: auto;"><br>`;
+            }
+            return '';
+          })()}
+          <strong style="font-size: 1.2em;">${escapeHtml(businessName)}</strong>
+          ${businessAddress ? `<br><small>${escapeHtml(businessAddress).replace(/\n/g, '<br>')}</small>` : ''}
+          ${headerData.businessPhone ? `<br><small>Ph: ${escapeHtml(headerData.businessPhone)}</small>` : ''}
+          ${headerData.businessTaxId ? `<br><small>GSTIN: ${escapeHtml(headerData.businessTaxId)}</small>` : ''}
+        </div>
+        
+        <div style="border-top: 1px dashed #000; margin: 10px 0;"></div>
+        
+        <!-- Invoice Info -->
+        <div style="font-size: 0.9em;">
+          <div>Bill No: ${invoiceNumber}${sampleOrder.id}</div>
+          <div>Date: ${new Date(sampleOrder.created_at).toLocaleString()}</div>
+          ${sampleOrder.customer.name !== 'Walk-in' ? `<div>Customer: ${escapeHtml(sampleOrder.customer.name)}</div>` : ''}
+        </div>
+        
+        <div style="border-top: 1px dashed #000; margin: 10px 0;"></div>
+        
+        <!-- Items -->
+        ${sampleOrder.items.map((item: any) => `
+          <div style="margin-bottom: 5px;">
+            <div>${escapeHtml(item.name)}</div>
+            <div style="display: flex; justify-content: space-between; font-size: 0.9em;">
+              <span>${item.quantity} x ₹${item.unit_price.toFixed(2)}</span>
+              <span>₹${item.line_total.toFixed(2)}</span>
+            </div>
+          </div>
+        `).join('')}
+        
+        <div style="border-top: 1px dashed #000; margin: 10px 0;"></div>
+        
+        <!-- Totals -->
+        <div style="text-align: right;">
+          <div>Subtotal: ₹${sampleOrder.subtotal.toFixed(2)}</div>
+          ${sampleOrder.tax_total > 0 ? `<div>Tax: ₹${sampleOrder.tax_total.toFixed(2)}</div>` : ''}
+          <div style="font-weight: bold; font-size: 1.1em;">Total: ₹${sampleOrder.grand_total.toFixed(2)}</div>
+        </div>
+        
+        ${footerData.footerText ? `
+          <div style="border-top: 1px dashed #000; margin: 10px 0;"></div>
+          <div style="text-align: center; font-size: 0.8em;">${escapeHtml(footerData.footerText)}</div>
+        ` : ''}
+      </div>
+    `;
+  }
+  
+  // Regular paper layouts
+  return `
+    <div style="width: ${dimensions.width}; max-width: ${dimensions.maxWidth}; margin: 0 auto; background: white; padding: ${dimensions.padding}; font-family: Arial, sans-serif; font-size: ${dimensions.fontSize};">
+      <!-- Header -->
+      <div style="border-bottom: ${style.headerBorder}; padding-bottom: 1rem; margin-bottom: 1rem;">
+        ${(() => {
+          if (style.showLogo) {
+            const logoAsset = assets.find((a: any) => a.type === 'logo');
+            if (logoAsset && logoAsset.blob) {
+              const metaData = JSON.parse(logoAsset.meta_json || '{}');
+              const mimeType = metaData.mimeType || 'image/png';
+              const logoSrc = `data:${mimeType};base64,${logoAsset.blob}`;
+              return `<div style="text-align: center; margin-bottom: 1rem;"><img src="${logoSrc}" alt="Logo" style="max-height: 80px; max-width: 200px; object-fit: contain;"></div>`;
+            }
+          }
+          return '';
+        })()}
+        <h1 style="margin: 0; color: #333; font-size: ${layout === 'Compact' ? '1.5em' : '2em'};">${escapeHtml(businessName)}</h1>
+        ${businessAddress ? `<p style="margin: 0.25rem 0; color: #666;">${escapeHtml(businessAddress).replace(/\n/g, '<br>')}</p>` : ''}
+        ${style.detailed ? `
+          ${headerData.businessPhone ? `<p style="margin: 0.25rem 0; color: #666;">Phone: ${escapeHtml(headerData.businessPhone)}</p>` : ''}
+          ${headerData.businessEmail ? `<p style="margin: 0.25rem 0; color: #666;">Email: ${escapeHtml(headerData.businessEmail)}</p>` : ''}
+          ${headerData.businessTaxId ? `<p style="margin: 0.25rem 0; color: #666;">GSTIN: ${escapeHtml(headerData.businessTaxId)}</p>` : ''}
+          ${headerData.businessWebsite ? `<p style="margin: 0.25rem 0; color: #666;">Web: ${escapeHtml(headerData.businessWebsite)}</p>` : ''}
+        ` : ''}
+      </div>
+      
+      <!-- Invoice Details -->
+      <div style="display: ${layout === 'Compact' ? 'block' : 'flex'}; justify-content: space-between; margin-bottom: ${layout === 'Compact' ? '1rem' : '2rem'};">
+        <div>
+          ${sampleOrder.customer.name !== 'Walk-in' ? `
+            <h3 style="margin: 0 0 0.5rem 0; font-size: ${layout === 'Compact' ? '1em' : '1.2em'};">Bill To:</h3>
+            <p style="margin: 0.25rem 0;">${escapeHtml(sampleOrder.customer.name)}</p>
+            ${style.detailed && sampleOrder.customer.phone ? `<p style="margin: 0.25rem 0;">${escapeHtml(sampleOrder.customer.phone)}</p>` : ''}
+            ${style.detailed && sampleOrder.customer.email ? `<p style="margin: 0.25rem 0;">${escapeHtml(sampleOrder.customer.email)}</p>` : ''}
+          ` : ''}
+        </div>
+        <div style="text-align: ${layout === 'Compact' ? 'left' : 'right'};">
+          <h3 style="margin: 0 0 0.5rem 0;">Invoice #${invoiceNumber}${sampleOrder.id}</h3>
+          <p style="margin: 0.25rem 0;">Date: ${new Date(sampleOrder.created_at).toLocaleDateString()}</p>
+        </div>
+      </div>
+      
+      <!-- Items Table -->
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 2rem;">
+        <thead>
+          <tr style="background: ${style.itemBg};">
+            <th style="padding: 0.5rem; text-align: left; border-bottom: 2px solid #333;">Item</th>
+            <th style="padding: 0.5rem; text-align: center; border-bottom: 2px solid #333;">Qty</th>
+            <th style="padding: 0.5rem; text-align: right; border-bottom: 2px solid #333;">Price</th>
+            <th style="padding: 0.5rem; text-align: right; border-bottom: 2px solid #333;">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${sampleOrder.items.map((item: any) => `
+            <tr>
+              <td style="padding: 0.5rem; border-bottom: 1px solid #ddd;">${escapeHtml(item.name)}</td>
+              <td style="padding: 0.5rem; text-align: center; border-bottom: 1px solid #ddd;">${item.quantity}</td>
+              <td style="padding: 0.5rem; text-align: right; border-bottom: 1px solid #ddd;">₹${item.unit_price.toFixed(2)}</td>
+              <td style="padding: 0.5rem; text-align: right; border-bottom: 1px solid #ddd;">₹${item.line_total.toFixed(2)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+      
+      <!-- Totals -->
+      <div style="display: flex; justify-content: flex-end; margin-bottom: 2rem;">
+        <div style="width: 300px;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+            <span>Subtotal:</span>
+            <strong>₹${sampleOrder.subtotal.toFixed(2)}</strong>
+          </div>
+          ${sampleOrder.tax_total > 0 ? `
+            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+              <span>Tax:</span>
+              <strong>₹${sampleOrder.tax_total.toFixed(2)}</strong>
+            </div>
+          ` : ''}
+          <div style="display: flex; justify-content: space-between; font-size: 1.25rem; padding-top: 0.5rem; border-top: 2px solid #333;">
+            <strong>Total:</strong>
+            <strong>₹${sampleOrder.grand_total.toFixed(2)}</strong>
+          </div>
+        </div>
+      </div>
+      
+      <!-- QR Codes -->
+      ${assets.filter(a => a.type === 'qr').length > 0 ? `
+        <div style="display: flex; gap: 1rem; justify-content: center; margin-bottom: 2rem;">
+          ${assets.filter(a => a.type === 'qr').map(qr => {
+            const meta = JSON.parse(qr.meta_json);
+            return `
+              <div style="text-align: center;">
+                <div style="width: 100px; height: 100px; border: 1px solid #ddd; display: flex; align-items: center; justify-content: center;">
+                  QR Code
+                </div>
+                <small>${escapeHtml(meta.label)}</small>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      ` : ''}
+      
+      <!-- Footer -->
+      ${(footerData.footerText || footerData.termsConditions) ? `
+        <div style="text-align: center; padding-top: 1rem; border-top: 1px solid #ddd; color: #666;">
+          ${footerData.footerText ? `<p>${escapeHtml(footerData.footerText)}</p>` : ''}
+          ${footerData.termsConditions ? `<p style="font-size: 0.9rem;">${escapeHtml(footerData.termsConditions)}</p>` : ''}
+        </div>
+      ` : ''}
+    </div>
+  `;
 }
 
 // Installment wizard functions
