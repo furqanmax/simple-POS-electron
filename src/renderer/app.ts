@@ -2549,143 +2549,535 @@ async function renderUsers() {
   await loadRolesForDropdown();
 }
 
-// Installments page with enhanced creation wizard
+// Installments page with comprehensive functionality
 async function renderInstallments() {
   const contentArea = document.getElementById('content-area');
   if (!contentArea) return;
   
   contentArea.innerHTML = `
     <div class="flex-between mb-4">
-      <h2>Installments</h2>
-      <button class="btn btn-primary" onclick="showInstallmentWizard()">Create Installment Plan</button>
-    </div>
-    
-    <div class="card mb-4">
-      <div class="card-header">
-        <h3 class="card-title">Overdue Installments</h3>
+      <h2>Installment Management</h2>
+      <div style="display: flex; gap: 0.5rem;">
+        <button class="btn btn-secondary" onclick="exportInstallments()">Export Data</button>
+        <button class="btn btn-primary" onclick="showInstallmentWizard()">Create New Plan</button>
       </div>
-      <div id="overdue-installments">Loading...</div>
     </div>
     
+    <!-- Statistics Overview -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+      <div class="card" style="background: linear-gradient(135deg, #e74c3c, #c0392b); color: white;">
+        <h4 style="color: white; margin: 0 0 0.5rem 0;">Overdue Amount</h4>
+        <div id="total-overdue" style="font-size: 1.8rem; font-weight: bold;">₹0.00</div>
+        <div id="overdue-count" style="font-size: 0.9rem; opacity: 0.8;">0 installments</div>
+      </div>
+      <div class="card" style="background: linear-gradient(135deg, #3498db, #2980b9); color: white;">
+        <h4 style="color: white; margin: 0 0 0.5rem 0;">Active Plans</h4>
+        <div id="active-plans-count" style="font-size: 1.8rem; font-weight: bold;">0</div>
+        <div id="active-plans-value" style="font-size: 0.9rem; opacity: 0.8;">₹0.00 total</div>
+      </div>
+      <div class="card" style="background: linear-gradient(135deg, #2ecc71, #27ae60); color: white;">
+        <h4 style="color: white; margin: 0 0 0.5rem 0;">Collected Today</h4>
+        <div id="collected-today" style="font-size: 1.8rem; font-weight: bold;">₹0.00</div>
+        <div id="collected-count" style="font-size: 0.9rem; opacity: 0.8;">0 payments</div>
+      </div>
+      <div class="card" style="background: linear-gradient(135deg, #f39c12, #e67e22); color: white;">
+        <h4 style="color: white; margin: 0 0 0.5rem 0;">Due This Week</h4>
+        <div id="due-this-week" style="font-size: 1.8rem; font-weight: bold;">₹0.00</div>
+        <div id="due-week-count" style="font-size: 0.9rem; opacity: 0.8;">0 installments</div>
+      </div>
+    </div>
+    
+    <!-- Search and Filters -->
+    <div class="card mb-3">
+      <div style="padding: 1rem; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+        <input type="text" id="installment-search" placeholder="Search by customer name or order ID..." 
+               style="flex: 1; min-width: 200px;" onkeyup="filterInstallments()">
+        <select id="installment-status-filter" onchange="filterInstallments()" style="min-width: 150px;">
+          <option value="">All Status</option>
+          <option value="overdue">Overdue</option>
+          <option value="pending">Pending</option>
+          <option value="paid">Paid</option>
+          <option value="active">Active Plans</option>
+          <option value="completed">Completed Plans</option>
+        </select>
+        <input type="date" id="installment-date-from" onchange="filterInstallments()" title="From Date">
+        <input type="date" id="installment-date-to" onchange="filterInstallments()" title="To Date">
+        <button class="btn btn-sm btn-secondary" onclick="clearInstallmentFilters()">Clear Filters</button>
+      </div>
+    </div>
+    
+    <!-- Tabbed View -->
     <div class="card">
       <div class="card-header">
-        <h3 class="card-title">Active Plans</h3>
+        <div class="tab-nav">
+          <button class="tab-btn active" onclick="switchInstallmentTab('overdue')">Overdue</button>
+          <button class="tab-btn" onclick="switchInstallmentTab('upcoming')">Upcoming</button>
+          <button class="tab-btn" onclick="switchInstallmentTab('active')">Active Plans</button>
+          <button class="tab-btn" onclick="switchInstallmentTab('completed')">Completed</button>
+          <button class="tab-btn" onclick="switchInstallmentTab('all')">All Installments</button>
+        </div>
       </div>
-      <div id="active-plans">Loading...</div>
+      <div id="installments-content">Loading...</div>
     </div>
     
     <!-- Installment Creation Wizard Modal -->
     <div id="installment-wizard-modal" class="modal" style="display:none;">
-      <div class="modal-content" style="max-width: 600px;">
+      <div class="modal-content" style="max-width: 700px;">
         <div class="modal-header">
           <h3>Create Installment Plan</h3>
-          <button onclick="closeInstallmentWizard()">&times;</button>
+          <span class="close" onclick="closeInstallmentWizard()">&times;</span>
         </div>
         <div class="modal-body">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+              <label>Select Order <span style="color: red;">*</span></label>
+              <select id="installment-order" class="form-control" onchange="updateInstallmentPreview()">
+                <option value="">Select an order...</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Start Date <span style="color: red;">*</span></label>
+              <input type="date" id="installment-start-date" class="form-control" 
+                     value="${new Date().toISOString().split('T')[0]}" onchange="updateInstallmentPreview()">
+            </div>
+            <div class="form-group">
+              <label>Number of Installments <span style="color: red;">*</span></label>
+              <input type="number" id="num-installments" min="2" max="36" value="3" 
+                     class="form-control" onchange="updateInstallmentPreview()">
+            </div>
+            <div class="form-group">
+              <label>Frequency <span style="color: red;">*</span></label>
+              <select id="installment-frequency" class="form-control" onchange="updateInstallmentPreview()">
+                <option value="weekly">Weekly</option>
+                <option value="biweekly">Bi-Weekly</option>
+                <option value="monthly" selected>Monthly</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Down Payment (₹)</label>
+              <input type="number" id="down-payment" min="0" value="0" step="0.01" 
+                     class="form-control" onchange="updateInstallmentPreview()">
+            </div>
+            <div class="form-group">
+              <label>Processing Fee (₹)</label>
+              <input type="number" id="processing-fee" min="0" value="0" step="0.01" 
+                     class="form-control" onchange="updateInstallmentPreview()">
+            </div>
+          </div>
+          
+          <!-- Installment Preview -->
+          <div id="installment-preview" style="margin-top: 1.5rem; padding: 1rem; background: var(--color-bg-tertiary); border-radius: 8px;">
+            <h4>Payment Schedule Preview</h4>
+            <div id="installment-schedule">Select an order to see payment schedule</div>
+          </div>
+          
+          <div style="margin-top: 1.5rem; display: flex; justify-content: space-between; align-items: center;">
+            <div id="installment-validation" style="color: var(--color-text-error);"></div>
+            <div>
+              <button class="btn btn-secondary" onclick="closeInstallmentWizard()">Cancel</button>
+              <button class="btn btn-primary" onclick="createInstallmentPlan()" style="margin-left: 0.5rem;">Create Plan</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Payment Recording Modal -->
+    <div id="payment-modal" class="modal" style="display:none;">
+      <div class="modal-content" style="max-width: 500px;">
+        <div class="modal-header">
+          <h3>Record Payment</h3>
+          <span class="close" onclick="closePaymentModal()">&times;</span>
+        </div>
+        <div class="modal-body">
+          <div id="payment-installment-info" style="padding: 1rem; background: var(--color-bg-tertiary); border-radius: 8px; margin-bottom: 1rem;">
+            <!-- Installment details will be shown here -->
+          </div>
           <div class="form-group">
-            <label>Select Order</label>
-            <select id="installment-order" class="form-control">
-              <option value="">Select an order...</option>
+            <label>Payment Amount (₹) <span style="color: red;">*</span></label>
+            <input type="number" id="payment-amount" step="0.01" min="0" class="form-control">
+          </div>
+          <div class="form-group">
+            <label>Payment Method <span style="color: red;">*</span></label>
+            <select id="payment-method" class="form-control">
+              <option value="cash">Cash</option>
+              <option value="card">Card</option>
+              <option value="upi">UPI</option>
+              <option value="bank_transfer">Bank Transfer</option>
+              <option value="cheque">Cheque</option>
             </select>
           </div>
           <div class="form-group">
-            <label>Number of Installments</label>
-            <input type="number" id="num-installments" min="2" max="36" value="3" class="form-control">
+            <label>Reference Number</label>
+            <input type="text" id="payment-reference" class="form-control" placeholder="Transaction ID, Cheque No, etc.">
           </div>
           <div class="form-group">
-            <label>Frequency</label>
-            <select id="installment-frequency" class="form-control">
-              <option value="weekly">Weekly</option>
-              <option value="biweekly">Bi-Weekly</option>
-              <option value="monthly" selected>Monthly</option>
-            </select>
+            <label>Notes</label>
+            <textarea id="payment-notes" class="form-control" rows="2" placeholder="Optional notes..."></textarea>
           </div>
-          <div class="form-group">
-            <label>Down Payment (₹)</label>
-            <input type="number" id="down-payment" min="0" value="0" class="form-control">
+          <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+            <button class="btn btn-secondary" onclick="closePaymentModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="submitPayment()">Record Payment</button>
           </div>
-          <button class="btn btn-primary" onclick="createInstallmentPlan()">Create Plan</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Installment Details Modal -->
+    <div id="installment-details-modal" class="modal" style="display:none;">
+      <div class="modal-content" style="max-width: 900px; max-height: 90vh; overflow-y: auto;">
+        <div class="modal-header">
+          <h3>Installment Plan Details</h3>
+          <span class="close" onclick="closeInstallmentDetails()">&times;</span>
+        </div>
+        <div class="modal-body" id="installment-details-content">
+          <!-- Details will be loaded here -->
         </div>
       </div>
     </div>
   `;
   
+  // Load initial data
+  await loadInstallmentStats();
+  await switchInstallmentTab('overdue');  // Show overdue tab by default
+}
+
+// Load installment statistics
+async function loadInstallmentStats() {
   try {
-    // Load overdue installments
+    // Get all data for statistics
     const overdueList = await window.posAPI.installments.getOverdue();
-    const overdueDiv = document.getElementById('overdue-installments');
-    if (overdueDiv) {
-      if (overdueList.length === 0) {
-        overdueDiv.innerHTML = '<p>No overdue installments</p>';
-      } else {
-        overdueDiv.innerHTML = `
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Customer</th>
-                <th>Due Date</th>
-                <th>Amount</th>
-                <th>Days Overdue</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${overdueList.map((inst: any) => `
-                <tr>
-                  <td>${inst.customer?.name || 'Unknown'}</td>
-                  <td>${new Date(inst.due_date).toLocaleDateString()}</td>
-                  <td>₹${inst.amount_due.toFixed(2)}</td>
-                  <td>${Math.floor((Date.now() - new Date(inst.due_date).getTime()) / (1000 * 60 * 60 * 24))} days</td>
-                  <td>
-                    <button class="btn btn-sm btn-primary" onclick="recordPayment(${inst.id})">Record Payment</button>
-                  </td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        `;
-      }
-    }
-    
-    // Load active plans
     const activePlans = await window.posAPI.installments.getActivePlans();
-    const plansDiv = document.getElementById('active-plans');
-    if (plansDiv) {
-      if (activePlans.length === 0) {
-        plansDiv.innerHTML = '<p>No active installment plans</p>';
-      } else {
-        plansDiv.innerHTML = `
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Order ID</th>
-                <th>Customer</th>
-                <th>Principal</th>
-                <th>Frequency</th>
-                <th>Progress</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${activePlans.map((plan: any) => `
-                <tr>
-                  <td>#${plan.order_id}</td>
-                  <td>${plan.customer?.name || 'Unknown'}</td>
-                  <td>₹${plan.principal.toFixed(2)}</td>
-                  <td>${plan.frequency}</td>
-                  <td>${plan.paid_count}/${plan.total_count}</td>
-                  <td>
-                    <button class="btn btn-sm" onclick="viewInstallmentDetails(${plan.id})">View Details</button>
-                  </td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        `;
-      }
+    
+    // Calculate statistics
+    const totalOverdue = overdueList.reduce((sum: number, inst: any) => sum + (inst.amount_due || 0), 0);
+    const activePlansTotal = activePlans.reduce((sum: number, plan: any) => sum + (plan.total_amount || 0), 0);
+    
+    // Update overdue stats
+    const overdueEl = document.getElementById('total-overdue');
+    const overdueCountEl = document.getElementById('overdue-count');
+    if (overdueEl) overdueEl.textContent = `₹${totalOverdue.toFixed(2)}`;
+    if (overdueCountEl) overdueCountEl.textContent = `${overdueList.length} installment${overdueList.length !== 1 ? 's' : ''}`;
+    
+    // Update active plans stats
+    const activePlansCountEl = document.getElementById('active-plans-count');
+    const activePlansValueEl = document.getElementById('active-plans-value');
+    if (activePlansCountEl) activePlansCountEl.textContent = activePlans.length.toString();
+    if (activePlansValueEl) activePlansValueEl.textContent = `₹${activePlansTotal.toFixed(2)} total`;
+    
+    // Calculate today's collections (would need actual payment data)
+    // For now, showing placeholder
+    const collectedTodayEl = document.getElementById('collected-today');
+    const collectedCountEl = document.getElementById('collected-count');
+    if (collectedTodayEl) collectedTodayEl.textContent = `₹0.00`;
+    if (collectedCountEl) collectedCountEl.textContent = `0 payments`;
+    
+    // Calculate due this week
+    const weekFromNow = new Date();
+    weekFromNow.setDate(weekFromNow.getDate() + 7);
+    const dueThisWeek = overdueList.filter((inst: any) => {
+      const dueDate = new Date(inst.due_date);
+      return dueDate <= weekFromNow;
+    });
+    const dueThisWeekTotal = dueThisWeek.reduce((sum: number, inst: any) => sum + (inst.amount_due || 0), 0);
+    
+    const dueWeekEl = document.getElementById('due-this-week');
+    const dueWeekCountEl = document.getElementById('due-week-count');
+    if (dueWeekEl) dueWeekEl.textContent = `₹${dueThisWeekTotal.toFixed(2)}`;
+    if (dueWeekCountEl) dueWeekCountEl.textContent = `${dueThisWeek.length} installment${dueThisWeek.length !== 1 ? 's' : ''}`;
+    
+  } catch (error: any) {
+    console.error('Failed to load statistics:', error);
+  }
+}
+
+// Switch between installment tabs
+async function switchInstallmentTab(tab: string) {
+  // Update tab buttons
+  const tabButtons = document.querySelectorAll('.tab-btn');
+  tabButtons.forEach(btn => {
+    btn.classList.remove('active');
+    if (btn.textContent?.toLowerCase().includes(tab.replace('_', ' '))) {
+      btn.classList.add('active');
+    }
+  });
+  
+  const contentDiv = document.getElementById('installments-content');
+  if (!contentDiv) return;
+  
+  contentDiv.innerHTML = '<div style="text-align: center; padding: 2rem;">Loading...</div>';
+  
+  try {
+    switch (tab) {
+      case 'overdue':
+        await loadOverdueInstallments();
+        break;
+      case 'upcoming':
+        await loadUpcomingInstallments();
+        break;
+      case 'active':
+        await loadActivePlans();
+        break;
+      case 'completed':
+        await loadCompletedPlans();
+        break;
+      case 'all':
+        await loadAllInstallments();
+        break;
     }
   } catch (error: any) {
-    showToast('Failed to load installments: ' + error.message, 'error');
+    contentDiv.innerHTML = `
+      <div style="text-align: center; padding: 2rem; color: var(--color-text-error);">
+        <p>Failed to load installments</p>
+        <p style="font-size: 0.9rem;">${escapeHtml(error.message || 'Unknown error')}</p>
+        <button class="btn btn-primary" onclick="switchInstallmentTab('${tab}')">Retry</button>
+      </div>
+    `;
+  }
+}
+
+// Load overdue installments
+async function loadOverdueInstallments() {
+  const contentDiv = document.getElementById('installments-content');
+  if (!contentDiv) return;
+  
+  const overdueList = await window.posAPI.installments.getOverdue();
+  
+  if (overdueList.length === 0) {
+    contentDiv.innerHTML = `
+      <div style="text-align: center; padding: 3rem; color: var(--color-text-tertiary);">
+        <h3>No Overdue Installments</h3>
+        <p>All installments are up to date!</p>
+      </div>
+    `;
+    return;
+  }
+  
+  contentDiv.innerHTML = `
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Order #</th>
+          <th>Customer</th>
+          <th>Due Date</th>
+          <th>Days Overdue</th>
+          <th>Amount</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${overdueList.map((inst: any) => {
+          const daysOverdue = Math.floor((Date.now() - new Date(inst.due_date).getTime()) / (1000 * 60 * 60 * 24));
+          const overdueClass = daysOverdue > 30 ? 'text-danger' : daysOverdue > 7 ? 'text-warning' : '';
+          
+          return `
+            <tr>
+              <td>#${inst.order_id || 'N/A'}</td>
+              <td>${escapeHtml(inst.customer?.name || 'Walk-in')}</td>
+              <td>${new Date(inst.due_date).toLocaleDateString()}</td>
+              <td class="${overdueClass}"><strong>${daysOverdue} days</strong></td>
+              <td><strong>₹${(inst.amount_due || 0).toFixed(2)}</strong></td>
+              <td>
+                <div style="display: flex; gap: 0.25rem;">
+                  <button class="btn btn-sm btn-primary" onclick="recordPayment(${inst.id})">Record Payment</button>
+                  <button class="btn btn-sm btn-secondary" onclick="sendReminder(${inst.id})" title="Send Reminder">
+                    📧
+                  </button>
+                  <button class="btn btn-sm btn-secondary" onclick="viewInstallmentDetails(${inst.plan_id})">View Plan</button>
+                </div>
+              </td>
+            </tr>
+          `;
+        }).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+// Load upcoming installments
+async function loadUpcomingInstallments() {
+  const contentDiv = document.getElementById('installments-content');
+  if (!contentDiv) return;
+  
+  // For now, we'll get all plans and filter upcoming installments
+  const activePlans = await window.posAPI.installments.getActivePlans();
+  contentDiv.innerHTML = `
+    <div style="text-align: center; padding: 3rem; color: var(--color-text-tertiary);">
+      <h3>Upcoming Installments</h3>
+      <p>Feature coming soon - will show installments due in the next 30 days</p>
+    </div>
+  `;
+}
+
+// Load active plans
+async function loadActivePlans() {
+  const contentDiv = document.getElementById('installments-content');
+  if (!contentDiv) return;
+  
+  const activePlans = await window.posAPI.installments.getActivePlans();
+  
+  if (activePlans.length === 0) {
+    contentDiv.innerHTML = `
+      <div style="text-align: center; padding: 3rem; color: var(--color-text-tertiary);">
+        <h3>No Active Plans</h3>
+        <p>Create a new installment plan to get started</p>
+      </div>
+    `;
+    return;
+  }
+  
+  contentDiv.innerHTML = `
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Order #</th>
+          <th>Customer</th>
+          <th>Total Amount</th>
+          <th>Frequency</th>
+          <th>Progress</th>
+          <th>Next Due</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${activePlans.map((plan: any) => {
+          const progress = plan.paid_count && plan.total_count 
+            ? Math.round((plan.paid_count / plan.total_count) * 100) 
+            : 0;
+          const progressColor = progress >= 75 ? 'success' : progress >= 50 ? 'info' : progress >= 25 ? 'warning' : 'secondary';
+          
+          return `
+            <tr>
+              <td>#${plan.order_id}</td>
+              <td>${escapeHtml(plan.customer?.name || 'Walk-in')}</td>
+              <td>₹${(plan.principal || 0).toFixed(2)}</td>
+              <td>${plan.frequency}</td>
+              <td>
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                  <div style="flex: 1; height: 20px; background: var(--color-bg-tertiary); border-radius: 10px; overflow: hidden;">
+                    <div style="width: ${progress}%; height: 100%; background: var(--color-${progressColor}); transition: width 0.3s;"></div>
+                  </div>
+                  <span style="min-width: 60px;">${plan.paid_count || 0}/${plan.total_count || 0}</span>
+                </div>
+              </td>
+              <td>${plan.next_due_date ? new Date(plan.next_due_date).toLocaleDateString() : 'N/A'}</td>
+              <td>
+                <div style="display: flex; gap: 0.25rem;">
+                  <button class="btn btn-sm btn-primary" onclick="viewInstallmentDetails(${plan.id})">View</button>
+                  <button class="btn btn-sm btn-success" onclick="payoffPlan(${plan.id})">Payoff</button>
+                  ${plan.paid_count === 0 ? `<button class="btn btn-sm btn-danger" onclick="cancelPlan(${plan.id})">Cancel</button>` : ''}
+                </div>
+              </td>
+            </tr>
+          `;
+        }).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+// Load completed plans
+async function loadCompletedPlans() {
+  const contentDiv = document.getElementById('installments-content');
+  if (!contentDiv) return;
+  
+  contentDiv.innerHTML = `
+    <div style="text-align: center; padding: 3rem; color: var(--color-text-tertiary);">
+      <h3>Completed Plans</h3>
+      <p>Feature coming soon - will show fully paid installment plans</p>
+    </div>
+  `;
+}
+
+// Load all installments
+async function loadAllInstallments() {
+  const contentDiv = document.getElementById('installments-content');
+  if (!contentDiv) return;
+  
+  const activePlans = await window.posAPI.installments.getActivePlans();
+  const overdueList = await window.posAPI.installments.getOverdue();
+  
+  contentDiv.innerHTML = `
+    <div style="padding: 1rem;">
+      <h4>Summary</h4>
+      <p>Total Active Plans: ${activePlans.length}</p>
+      <p>Total Overdue Installments: ${overdueList.length}</p>
+    </div>
+  `;
+}
+
+// Filter installments
+function filterInstallments() {
+  // Get current tab and reload with filters
+  const activeTab = document.querySelector('.tab-btn.active');
+  if (activeTab) {
+    const tabText = activeTab.textContent?.toLowerCase() || '';
+    if (tabText.includes('overdue')) switchInstallmentTab('overdue');
+    else if (tabText.includes('upcoming')) switchInstallmentTab('upcoming');
+    else if (tabText.includes('active')) switchInstallmentTab('active');
+    else if (tabText.includes('completed')) switchInstallmentTab('completed');
+    else switchInstallmentTab('all');
+  }
+}
+
+// Clear installment filters
+function clearInstallmentFilters() {
+  (document.getElementById('installment-search') as HTMLInputElement).value = '';
+  (document.getElementById('installment-status-filter') as HTMLSelectElement).value = '';
+  (document.getElementById('installment-date-from') as HTMLInputElement).value = '';
+  (document.getElementById('installment-date-to') as HTMLInputElement).value = '';
+  filterInstallments();
+}
+
+// Export installments data
+async function exportInstallments() {
+  try {
+    const overdueList = await window.posAPI.installments.getOverdue();
+    const activePlans = await window.posAPI.installments.getActivePlans();
+    
+    // Create CSV content
+    const csvRows = [
+      ['Type', 'Order ID', 'Customer', 'Amount', 'Due Date', 'Status', 'Frequency', 'Progress'],
+      ...overdueList.map((inst: any) => [
+        'Overdue Installment',
+        inst.order_id || '',
+        inst.customer?.name || 'Walk-in',
+        inst.amount_due || 0,
+        inst.due_date || '',
+        'Overdue',
+        '',
+        ''
+      ]),
+      ...activePlans.map((plan: any) => [
+        'Active Plan',
+        plan.order_id || '',
+        plan.customer?.name || 'Walk-in',
+        plan.principal || 0,
+        plan.next_due_date || '',
+        'Active',
+        plan.frequency || '',
+        `${plan.paid_count || 0}/${plan.total_count || 0}`
+      ])
+    ];
+    
+    const csvContent = csvRows.map(row => row.map((cell: any) => 
+      typeof cell === 'string' && cell.includes(',') ? `"${cell}"` : cell
+    ).join(',')).join('\n');
+    
+    // Download CSV
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `installments_${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    showToast('Installments data exported successfully', 'success');
+  } catch (error: any) {
+    showToast('Failed to export data: ' + error.message, 'error');
   }
 }
 
@@ -3703,9 +4095,27 @@ async function deleteOpenOrder(id: number) {
 (window as any).removeQRCode = removeQRCode;
 (window as any).closeTemplatePreview = closeTemplatePreview;
 (window as any).printPreviewTemplate = printPreviewTemplate;
+// Installment functions
 (window as any).showInstallmentWizard = showInstallmentWizard;
 (window as any).closeInstallmentWizard = closeInstallmentWizard;
 (window as any).createInstallmentPlan = createInstallmentPlan;
+(window as any).updateInstallmentPreview = updateInstallmentPreview;
+(window as any).loadInstallmentStats = loadInstallmentStats;
+(window as any).switchInstallmentTab = switchInstallmentTab;
+(window as any).loadOverdueInstallments = loadOverdueInstallments;
+(window as any).loadUpcomingInstallments = loadUpcomingInstallments;
+(window as any).loadActivePlans = loadActivePlans;
+(window as any).loadCompletedPlans = loadCompletedPlans;
+(window as any).loadAllInstallments = loadAllInstallments;
+(window as any).filterInstallments = filterInstallments;
+(window as any).clearInstallmentFilters = clearInstallmentFilters;
+(window as any).exportInstallments = exportInstallments;
+(window as any).closePaymentModal = closePaymentModal;
+(window as any).submitPayment = submitPayment;
+(window as any).closeInstallmentDetails = closeInstallmentDetails;
+(window as any).sendReminder = sendReminder;
+(window as any).payoffPlan = payoffPlan;
+(window as any).cancelPlan = cancelPlan;
 (window as any).toggleDarkMode = toggleDarkMode;
 // Role and Permission Management functions
 (window as any).switchUserTab = switchUserTab;
@@ -4223,23 +4633,294 @@ async function viewRoleUsers(roleId: number) {
   }
 }
 
-// Installment functions
+// Installment payment functions
 async function recordPayment(installmentId: number) {
-  const amount = prompt('Enter payment amount:');
-  if (!amount) return;
-  
   try {
-    await window.posAPI.payments.recordInstallmentPayment(installmentId, parseFloat(amount), 'cash');
+    // Get installment details first
+    const overdueList = await window.posAPI.installments.getOverdue();
+    const installment = overdueList.find((inst: any) => inst.id === installmentId);
+    
+    if (!installment) {
+      showToast('Installment not found', 'error');
+      return;
+    }
+    
+    // Show payment modal
+    const modal = document.getElementById('payment-modal');
+    const infoDiv = document.getElementById('payment-installment-info');
+    const amountInput = document.getElementById('payment-amount') as HTMLInputElement;
+    
+    if (!modal || !infoDiv || !amountInput) {
+      showToast('Payment modal not found', 'error');
+      return;
+    }
+    
+    // Display installment info
+    // Cast to any since the returned object has additional properties from SQL joins
+    const inst = installment as any;
+    infoDiv.innerHTML = `
+      <h4>Installment Details</h4>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+        <div><strong>Customer:</strong> ${escapeHtml(inst.customer?.name || inst.customer_name || 'Walk-in')}</div>
+        <div><strong>Order #:</strong> ${inst.order_id || 'N/A'}</div>
+        <div><strong>Due Date:</strong> ${new Date(inst.due_date).toLocaleDateString()}</div>
+        <div><strong>Amount Due:</strong> ₹${(inst.amount_due || 0).toFixed(2)}</div>
+      </div>
+    `;
+    
+    // Set default amount
+    amountInput.value = (installment.amount_due || 0).toFixed(2);
+    
+    // Store installment ID for submission
+    (window as any).currentPaymentInstallmentId = installmentId;
+    
+    // Show modal
+    modal.style.display = 'block';
+    amountInput.focus();
+    
+  } catch (error: any) {
+    showToast('Failed to load installment details: ' + error.message, 'error');
+  }
+}
+
+function closePaymentModal() {
+  const modal = document.getElementById('payment-modal');
+  if (modal) {
+    modal.style.display = 'none';
+    (window as any).currentPaymentInstallmentId = null;
+  }
+}
+
+async function submitPayment() {
+  try {
+    const installmentId = (window as any).currentPaymentInstallmentId;
+    if (!installmentId) {
+      showToast('No installment selected', 'error');
+      return;
+    }
+    
+    const amountInput = document.getElementById('payment-amount') as HTMLInputElement;
+    const methodSelect = document.getElementById('payment-method') as HTMLSelectElement;
+    const referenceInput = document.getElementById('payment-reference') as HTMLInputElement;
+    
+    const amount = parseFloat(amountInput.value);
+    const method = methodSelect.value;
+    const reference = referenceInput.value.trim();
+    
+    // Validation
+    if (!amount || amount <= 0) {
+      showToast('Please enter a valid amount', 'warning');
+      amountInput.focus();
+      return;
+    }
+    
+    // Record payment
+    await window.posAPI.installments.recordPayment(installmentId, amount, method, reference || undefined);
+    
     showToast('Payment recorded successfully', 'success');
-    renderInstallments();
+    closePaymentModal();
+    
+    // Refresh the current tab
+    await loadInstallmentStats();
+    const activeTab = document.querySelector('.tab-btn.active');
+    if (activeTab?.textContent?.toLowerCase().includes('overdue')) {
+      await loadOverdueInstallments();
+    } else {
+      await loadActivePlans();
+    }
+    
   } catch (error: any) {
     showToast('Failed to record payment: ' + error.message, 'error');
   }
 }
 
-function viewInstallmentDetails(planId: number) {
-  // TODO: Implement installment details view
-  showToast('Installment details view coming soon', 'info');
+// View installment plan details
+async function viewInstallmentDetails(planId: number) {
+  try {
+    const modal = document.getElementById('installment-details-modal');
+    const contentDiv = document.getElementById('installment-details-content');
+    
+    if (!modal || !contentDiv) {
+      showToast('Details modal not found', 'error');
+      return;
+    }
+    
+    contentDiv.innerHTML = '<div style="text-align: center; padding: 2rem;">Loading...</div>';
+    modal.style.display = 'block';
+    
+    // Get plan details
+    const plan = await window.posAPI.installments.getPlan(planId);
+    const installments = await window.posAPI.installments.getInstallments(planId);
+    
+    if (!plan) {
+      contentDiv.innerHTML = '<p style="text-align: center; color: red;">Plan not found</p>';
+      return;
+    }
+    
+    // Get order and customer details
+    const activePlans = await window.posAPI.installments.getActivePlans();
+    const planDetails = activePlans.find((p: any) => p.id === planId);
+    
+    // Calculate statistics
+    const paidInstallments = installments.filter((inst: any) => inst.status === 'paid');
+    const pendingInstallments = installments.filter((inst: any) => inst.status === 'pending');
+    const overdueInstallments = installments.filter((inst: any) => inst.status === 'overdue');
+    
+    const totalPaid = paidInstallments.reduce((sum: number, inst: any) => sum + (inst.amount_due || 0), 0);
+    const totalPending = pendingInstallments.reduce((sum: number, inst: any) => sum + (inst.amount_due || 0), 0);
+    const totalOverdue = overdueInstallments.reduce((sum: number, inst: any) => sum + (inst.amount_due || 0), 0);
+    
+    contentDiv.innerHTML = `
+      <div style="padding: 1rem;">
+        <!-- Plan Overview -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem;">
+          <div>
+            <h4>Plan Information</h4>
+            <div style="background: var(--color-bg-tertiary); padding: 1rem; border-radius: 8px;">
+              <p><strong>Order #:</strong> ${plan.order_id}</p>
+              <p><strong>Customer:</strong> ${escapeHtml(planDetails?.customer?.name || 'Walk-in')}</p>
+              <p><strong>Principal Amount:</strong> ₹${(plan.principal || 0).toFixed(2)}</p>
+              <p><strong>Down Payment:</strong> ₹${(plan.down_payment || 0).toFixed(2)}</p>
+              <p><strong>Processing Fee:</strong> ₹${(plan.fee || 0).toFixed(2)}</p>
+              <p><strong>Frequency:</strong> ${plan.frequency}</p>
+              <p><strong>Start Date:</strong> ${new Date(plan.start_date).toLocaleDateString()}</p>
+              <p><strong>Created:</strong> ${new Date(plan.created_at).toLocaleDateString()}</p>
+            </div>
+          </div>
+          
+          <div>
+            <h4>Payment Statistics</h4>
+            <div style="background: var(--color-bg-tertiary); padding: 1rem; border-radius: 8px;">
+              <p><strong>Total Installments:</strong> ${installments.length}</p>
+              <p><strong>Paid:</strong> ${paidInstallments.length} (₹${totalPaid.toFixed(2)})</p>
+              <p><strong>Pending:</strong> ${pendingInstallments.length} (₹${totalPending.toFixed(2)})</p>
+              <p><strong>Overdue:</strong> ${overdueInstallments.length} (₹${totalOverdue.toFixed(2)})</p>
+              <div style="margin-top: 1rem;">
+                <div style="height: 20px; background: var(--color-bg-secondary); border-radius: 10px; overflow: hidden;">
+                  <div style="width: ${(paidInstallments.length / installments.length) * 100}%; height: 100%; background: var(--color-success);"></div>
+                </div>
+                <p style="margin-top: 0.5rem; font-size: 0.9rem;">Progress: ${Math.round((paidInstallments.length / installments.length) * 100)}%</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Installments List -->
+        <h4>Installment Schedule</h4>
+        <table class="table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Due Date</th>
+              <th>Amount</th>
+              <th>Status</th>
+              <th>Paid Date</th>
+              <th>Payment Method</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${installments.map((inst: any) => {
+              const statusColor = inst.status === 'paid' ? 'success' : 
+                                 inst.status === 'overdue' ? 'danger' : 'secondary';
+              const isPaid = inst.status === 'paid';
+              
+              return `
+                <tr>
+                  <td>${inst.seq_no}</td>
+                  <td>${new Date(inst.due_date).toLocaleDateString()}</td>
+                  <td>₹${(inst.amount_due || 0).toFixed(2)}</td>
+                  <td><span class="badge badge-${statusColor}">${inst.status}</span></td>
+                  <td>${isPaid && inst.paid_at ? new Date(inst.paid_at).toLocaleDateString() : '-'}</td>
+                  <td>${inst.payment_method || '-'}</td>
+                  <td>
+                    ${!isPaid ? `
+                      <button class="btn btn-sm btn-primary" onclick="recordPayment(${inst.id})">Record Payment</button>
+                    ` : `
+                      <span style="color: var(--color-text-tertiary);">Paid</span>
+                    `}
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+        
+        <!-- Action Buttons -->
+        <div style="margin-top: 2rem; display: flex; justify-content: space-between;">
+          <div>
+            ${pendingInstallments.length > 0 ? `
+              <button class="btn btn-success" onclick="payoffPlan(${planId})">Payoff Remaining Balance</button>
+            ` : ''}
+            ${paidInstallments.length === 0 ? `
+              <button class="btn btn-danger" onclick="cancelPlan(${planId})">Cancel Plan</button>
+            ` : ''}
+          </div>
+          <button class="btn btn-secondary" onclick="closeInstallmentDetails()">Close</button>
+        </div>
+      </div>
+    `;
+    
+  } catch (error: any) {
+    showToast('Failed to load plan details: ' + error.message, 'error');
+    const contentDiv = document.getElementById('installment-details-content');
+    if (contentDiv) {
+      contentDiv.innerHTML = `
+        <div style="text-align: center; padding: 2rem; color: red;">
+          <p>Failed to load details</p>
+          <p style="font-size: 0.9rem;">${escapeHtml(error.message || 'Unknown error')}</p>
+        </div>
+      `;
+    }
+  }
+}
+
+function closeInstallmentDetails() {
+  const modal = document.getElementById('installment-details-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+// Send reminder (placeholder)
+async function sendReminder(installmentId: number) {
+  showToast('Reminder functionality coming soon', 'info');
+  // In future: integrate with email/SMS service
+}
+
+// Payoff entire plan
+async function payoffPlan(planId: number) {
+  if (!confirm('Are you sure you want to payoff the entire remaining balance?')) return;
+  
+  try {
+    const method = prompt('Enter payment method (cash/card/upi/bank_transfer):') || 'cash';
+    const reference = prompt('Enter reference number (optional):');
+    
+    await window.posAPI.installments.payoff(planId, method, reference || undefined);
+    
+    showToast('Plan paid off successfully', 'success');
+    closeInstallmentDetails();
+    await loadInstallmentStats();
+    await switchInstallmentTab('active');
+    
+  } catch (error: any) {
+    showToast('Failed to payoff plan: ' + error.message, 'error');
+  }
+}
+
+// Cancel installment plan
+async function cancelPlan(planId: number) {
+  if (!confirm('Are you sure you want to cancel this installment plan? This action cannot be undone.')) return;
+  
+  try {
+    await window.posAPI.installments.cancelPlan(planId);
+    
+    showToast('Plan cancelled successfully', 'success');
+    closeInstallmentDetails();
+    await loadInstallmentStats();
+    await switchInstallmentTab('active');
+    
+  } catch (error: any) {
+    showToast('Failed to cancel plan: ' + error.message, 'error');
+  }
 }
 
 // Template management functions - Enhanced implementation
@@ -5064,18 +5745,39 @@ async function showInstallmentWizard() {
   const modal = document.getElementById('installment-wizard-modal');
   if (!modal) return;
   
-  // Load finalized orders for selection
+  // Reset form
+  (document.getElementById('installment-order') as HTMLSelectElement).value = '';
+  (document.getElementById('num-installments') as HTMLInputElement).value = '3';
+  (document.getElementById('installment-frequency') as HTMLSelectElement).value = 'monthly';
+  (document.getElementById('down-payment') as HTMLInputElement).value = '0';
+  (document.getElementById('processing-fee') as HTMLInputElement).value = '0';
+  (document.getElementById('installment-start-date') as HTMLInputElement).value = new Date().toISOString().split('T')[0];
+  
+  // Clear preview
+  const scheduleDiv = document.getElementById('installment-schedule');
+  if (scheduleDiv) {
+    scheduleDiv.innerHTML = 'Select an order to see payment schedule';
+  }
+  
+  // Load finalized orders that aren't already installment plans
   try {
-    const orders = await window.posAPI.orders.getAll({ startDate: '2024-01-01' });
+    const orders = await window.posAPI.orders.getAll();
+    const eligibleOrders = orders.filter((o: any) => o.status === 'finalized' && !o.is_installment);
+    
     const orderSelect = document.getElementById('installment-order') as HTMLSelectElement;
     if (orderSelect) {
-      const eligibleOrders = orders.filter(o => o.status === 'finalized' && !o.is_installment);
-      orderSelect.innerHTML = '<option value="">Select an order...</option>' +
-        eligibleOrders.map(o => `
-          <option value="${o.id}">
-            #${o.id} - ${o.customer?.name || 'Walk-in'} - ₹${o.grand_total.toFixed(2)}
+      orderSelect.innerHTML = `
+        <option value="">Select an order...</option>
+        ${eligibleOrders.map((order: any) => `
+          <option value="${order.id}" data-total="${order.grand_total}" data-customer="${escapeHtml(order.customer?.name || 'Walk-in')}">
+            #${order.id} - ${escapeHtml(order.customer?.name || 'Walk-in')} - ₹${order.grand_total.toFixed(2)}
           </option>
-        `).join('');
+        `).join('')}
+      `;
+      
+      if (eligibleOrders.length === 0) {
+        orderSelect.innerHTML = '<option value="">No eligible orders available</option>';
+      }
     }
   } catch (error: any) {
     showToast('Failed to load orders: ' + error.message, 'error');
@@ -5089,43 +5791,197 @@ function closeInstallmentWizard() {
   if (modal) modal.style.display = 'none';
 }
 
-async function createInstallmentPlan() {
-  const orderId = parseInt((document.getElementById('installment-order') as HTMLSelectElement).value);
-  const numInstallments = parseInt((document.getElementById('num-installments') as HTMLInputElement).value);
-  const frequency = (document.getElementById('installment-frequency') as HTMLSelectElement).value;
-  const downPayment = parseFloat((document.getElementById('down-payment') as HTMLInputElement).value) || 0;
+// Update installment preview when form changes
+function updateInstallmentPreview() {
+  const orderSelect = document.getElementById('installment-order') as HTMLSelectElement;
+  const numInstallmentsInput = document.getElementById('num-installments') as HTMLInputElement;
+  const frequencySelect = document.getElementById('installment-frequency') as HTMLSelectElement;
+  const downPaymentInput = document.getElementById('down-payment') as HTMLInputElement;
+  const processingFeeInput = document.getElementById('processing-fee') as HTMLInputElement;
+  const startDateInput = document.getElementById('installment-start-date') as HTMLInputElement;
+  const scheduleDiv = document.getElementById('installment-schedule');
+  const validationDiv = document.getElementById('installment-validation');
   
-  if (!orderId) {
-    showToast('Please select an order', 'error');
+  if (!scheduleDiv || !validationDiv) return;
+  
+  // Clear validation
+  validationDiv.textContent = '';
+  
+  // Check if order is selected
+  if (!orderSelect.value) {
+    scheduleDiv.innerHTML = 'Select an order to see payment schedule';
     return;
   }
   
+  const selectedOption = orderSelect.options[orderSelect.selectedIndex];
+  const orderTotal = parseFloat(selectedOption.getAttribute('data-total') || '0');
+  const customerName = selectedOption.getAttribute('data-customer') || 'Walk-in';
+  const numInstallments = parseInt(numInstallmentsInput.value) || 0;
+  const downPayment = parseFloat(downPaymentInput.value) || 0;
+  const processingFee = parseFloat(processingFeeInput.value) || 0;
+  const frequency = frequencySelect.value;
+  const startDate = new Date(startDateInput.value);
+  
+  // Validation
+  if (numInstallments < 2 || numInstallments > 36) {
+    validationDiv.textContent = 'Number of installments must be between 2 and 36';
+    return;
+  }
+  
+  if (downPayment < 0 || downPayment >= orderTotal) {
+    validationDiv.textContent = 'Down payment must be less than the order total';
+    return;
+  }
+  
+  if (processingFee < 0) {
+    validationDiv.textContent = 'Processing fee cannot be negative';
+    return;
+  }
+  
+  // Calculate installment schedule
+  const amountToFinance = orderTotal - downPayment + processingFee;
+  const installmentAmount = amountToFinance / numInstallments;
+  
+  let scheduleHTML = `
+    <div style="margin-bottom: 1rem;">
+      <p><strong>Customer:</strong> ${escapeHtml(customerName)}</p>
+      <p><strong>Order Total:</strong> ₹${orderTotal.toFixed(2)}</p>
+      ${downPayment > 0 ? `<p><strong>Down Payment:</strong> ₹${downPayment.toFixed(2)}</p>` : ''}
+      ${processingFee > 0 ? `<p><strong>Processing Fee:</strong> ₹${processingFee.toFixed(2)}</p>` : ''}
+      <p><strong>Amount to Finance:</strong> ₹${amountToFinance.toFixed(2)}</p>
+      <p><strong>Per Installment:</strong> ₹${installmentAmount.toFixed(2)}</p>
+    </div>
+    <table class="table" style="font-size: 0.9rem;">
+      <thead>
+        <tr>
+          <th>Installment</th>
+          <th>Due Date</th>
+          <th>Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+  `;
+  
+  let currentDate = new Date(startDate);
+  let remainingAmount = amountToFinance;
+  
+  for (let i = 1; i <= numInstallments; i++) {
+    let amount = installmentAmount;
+    
+    // Last installment gets the remaining amount to handle rounding
+    if (i === numInstallments) {
+      amount = remainingAmount;
+    } else {
+      amount = Math.round(amount * 100) / 100;  // Round to 2 decimal places
+      remainingAmount -= amount;
+    }
+    
+    scheduleHTML += `
+      <tr>
+        <td>#${i}</td>
+        <td>${currentDate.toLocaleDateString()}</td>
+        <td>₹${amount.toFixed(2)}</td>
+      </tr>
+    `;
+    
+    // Calculate next due date
+    switch (frequency) {
+      case 'weekly':
+        currentDate.setDate(currentDate.getDate() + 7);
+        break;
+      case 'biweekly':
+        currentDate.setDate(currentDate.getDate() + 14);
+        break;
+      case 'monthly':
+        currentDate.setMonth(currentDate.getMonth() + 1);
+        break;
+    }
+  }
+  
+  scheduleHTML += '</tbody></table>';
+  scheduleDiv.innerHTML = scheduleHTML;
+}
+
+async function createInstallmentPlan() {
   try {
+    const orderSelect = document.getElementById('installment-order') as HTMLSelectElement;
+    const numInstallmentsInput = document.getElementById('num-installments') as HTMLInputElement;
+    const frequencySelect = document.getElementById('installment-frequency') as HTMLSelectElement;
+    const downPaymentInput = document.getElementById('down-payment') as HTMLInputElement;
+    const processingFeeInput = document.getElementById('processing-fee') as HTMLInputElement;
+    const startDateInput = document.getElementById('installment-start-date') as HTMLInputElement;
+    const validationDiv = document.getElementById('installment-validation');
+    
+    // Get values
+    const orderId = parseInt(orderSelect.value);
+    const numInstallments = parseInt(numInstallmentsInput.value);
+    const frequency = frequencySelect.value;
+    const downPayment = parseFloat(downPaymentInput.value || '0');
+    const processingFee = parseFloat(processingFeeInput.value || '0');
+    const startDate = startDateInput.value;
+    
+    // Validation
+    if (!orderId) {
+      if (validationDiv) validationDiv.textContent = 'Please select an order';
+      orderSelect.focus();
+      return;
+    }
+    
+    if (!numInstallments || numInstallments < 2 || numInstallments > 36) {
+      if (validationDiv) validationDiv.textContent = 'Number of installments must be between 2 and 36';
+      numInstallmentsInput.focus();
+      return;
+    }
+    
+    if (!startDate) {
+      if (validationDiv) validationDiv.textContent = 'Please select a start date';
+      startDateInput.focus();
+      return;
+    }
+    
+    // Get order details
     const order = await window.posAPI.orders.getById(orderId);
     if (!order) {
       showToast('Order not found', 'error');
       return;
     }
     
-    const principal = order.grand_total - downPayment;
+    const principal = order.grand_total;
     
-    const plan = await window.posAPI.installments.createPlan({
+    // Additional validation
+    if (downPayment >= principal) {
+      if (validationDiv) validationDiv.textContent = 'Down payment must be less than the order total';
+      downPaymentInput.focus();
+      return;
+    }
+    
+    // Create the plan
+    await window.posAPI.installments.createPlan({
       order_id: orderId,
-      principal: principal,
-      num_installments: numInstallments,
-      frequency: frequency as any,
-      start_date: new Date().toISOString().split('T')[0],
+      principal,
       down_payment: downPayment,
-      fee: 0,
+      fee: processingFee,
+      frequency: frequency as any,
       count: numInstallments,
+      num_installments: numInstallments,  // Support both field names
+      start_date: new Date(startDate).toISOString(),
       rounding_mode: 'bankers'
     } as any);
     
     showToast('Installment plan created successfully', 'success');
     closeInstallmentWizard();
-    await renderInstallments();
+    
+    // Refresh installments page
+    await loadInstallmentStats();
+    await switchInstallmentTab('active');
+    
   } catch (error: any) {
+    console.error('Create installment plan error:', error);
     showToast('Failed to create installment plan: ' + error.message, 'error');
+    const validationDiv = document.getElementById('installment-validation');
+    if (validationDiv) {
+      validationDiv.textContent = error.message || 'Unknown error occurred';
+    }
   }
 }
 
