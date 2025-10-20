@@ -22,9 +22,11 @@
     "package:linux": "electron-builder --linux"
   },
   "dependencies": {
+    "@types/crypto-js": "^4.2.2",
     "axios": "^1.12.2",
     "bcrypt": "^5.1.1",
     "better-sqlite3": "^9.2.2",
+    "crypto-js": "^4.2.0",
     "date-fns": "^3.0.6",
     "qrcode": "^1.5.3",
     "tweetnacl": "^1.0.3",

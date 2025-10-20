@@ -1,0 +1,19 @@
+{
+  "payload": {
+    "type": "offline_cert",
+    "version": 1,
+    "product_code": "SIM-POS",
+    "license_key": "SIM-POS-ZWGA-N6T4-LVPT-VLV3-C68A",
+    "device_hash": "123546",
+    "device_name": null,
+    "app_version": null,
+    "issued_at": "2025-10-20T08:50:04+00:00",
+    "valid_until": "2025-11-03T08:50:04+00:00",
+    "constraints": {
+      "max_activations": 1
+    }
+  },
+  "signature": "Wr93oKDkomUXlWOcIyu4wlyfjMANbavFNlwvPX3XfgUtUn1CM+ItX+nK/EqMOGI84uF57iGCMsj5X0638lGRBA==",
+  "alg": "Ed25519",
+  "version": 1
+}

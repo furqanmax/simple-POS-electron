@@ -6,26 +6,36 @@
 ```env
 # Copy these exact values to your .env file
 NUVANA_LICENSE_URL=https://licensing.nuvanasolutions.in
-NUVANA_PRODUCT_CODE=TEST-SIMPLEPOS-2024
+NUVANA_PRODUCT_CODE=SIM-POS
 NUVANA_SECRET=sk_test_4eC39HqLyjWDarjtT1zdp7dc8hY5kL9mNpQrStUvWxXz
 NUVANA_PUBLIC_KEY=base64:MCowBQYDK2VwAyEAH+qM6N8Y7pMQzRhT6Xn5fUjK2xkJFDn4L8kPz7RbqX8=
 ```
 
-### 2️⃣ Sample License Keys
+### 2️⃣ Sample License Keys (Actual Nuvana Format)
 
-#### **Annual Plan** (Best for testing - all features enabled)
+#### **Real Format Example** (From Nuvana)
 ```
-NUV-ANN-A1B2-C3D4-E5F6-G7H8-I9J0-K1L2-M3N4-O5P6-Q7R8-S9T0-2024
+SIM-POS-ZWGA-N6T4-LVPT-VLV3-C68A
+```
+- Product code prefix: `SIM-POS`
+- Segments: 4-character alphanumeric blocks
+- Format: `[PRODUCT]-[SEG1]-[SEG2]-[SEG3]-[SEG4]-[SEG5]`
+
+#### **Test Keys for Different Plans**
+
+**Annual Plan** (All features)
+```
+SIM-POS-ANN1-2024-FULL-TEST-KEY1
 ```
 - ✅ Unlimited users
-- ✅ Unlimited orders
+- ✅ Unlimited orders  
 - ✅ All features enabled
 - ✅ Phone + Email support
 - 📅 Valid for 365 days
 
-#### **Monthly Plan**
+**Monthly Plan**
 ```
-NUV-MTH-WXYZ-1234-5678-90AB-CDEF-GHIJ-KLMN-OPQR-STUV-WXYZ-2024
+SIM-POS-MTH1-2024-STND-TEST-KEY2
 ```
 - 👥 5 users max
 - 📦 1000 orders max
@@ -33,9 +43,9 @@ NUV-MTH-WXYZ-1234-5678-90AB-CDEF-GHIJ-KLMN-OPQR-STUV-WXYZ-2024
 - 📧 Email support only
 - 📅 Valid for 30 days
 
-#### **Trial License** (Auto-generated, no key needed)
+**Trial License** (Auto-generated)
 ```
-NUV-TRIAL-AUTO-GEN-NO-KEY-REQUIRED
+SIM-POS-TRIAL-AUTO-GEN-TEST-KEY3
 ```
 - 👥 2 users max
 - 📦 100 orders max
@@ -71,12 +81,12 @@ NUV-TRIAL-AUTO-GEN-NO-KEY-REQUIRED
 3. **Activate License**
    - Go to: **Settings** → **License Management**
    - Click: **Activate License**
-   - Paste: `NUV-ANN-A1B2-C3D4-E5F6-G7H8-I9J0-K1L2-M3N4-O5P6-Q7R8-S9T0-2024`
+   - Paste: `SIM-POS-ZWGA-N6T4-LVPT-VLV3-C68A`
    - Click: **Activate**
 
 ### 5️⃣ Expected Results
 
-When using the annual license key above, you should see:
+When using the sample license key above, you should see:
 
 ```
 ✅ Status: VALID
@@ -159,7 +169,7 @@ npm start  # Will recreate database
 
 **Quick Copy Box** - All values in one place:
 ```
-License Key: NUV-ANN-A1B2-C3D4-E5F6-G7H8-I9J0-K1L2-M3N4-O5P6-Q7R8-S9T0-2024
-Product Code: TEST-SIMPLEPOS-2024
+License Key: SIM-POS-ZWGA-N6T4-LVPT-VLV3-C68A
+Product Code: SIM-POS
 Secret: sk_test_4eC39HqLyjWDarjtT1zdp7dc8hY5kL9mNpQrStUvWxXz
 ```

@@ -235,6 +235,27 @@ export interface Settings {
   theme?: string;
 }
 
+// Nuvana Offline Certificate Format
+export interface NuvanaOfflineCertificate {
+  payload: {
+    type: 'offline_cert';
+    version: number;
+    product_code: string;
+    license_key: string;
+    device_hash: string;
+    device_name?: string | null;
+    app_version?: string | null;
+    issued_at: string;
+    valid_until: string;
+    constraints?: {
+      max_activations?: number;
+    };
+  };
+  signature: string;
+  alg: 'Ed25519';
+  version: number;
+}
+
 export interface LicenseState {
   id: number;
   plan: LicensePlan;
@@ -277,7 +298,7 @@ export interface LicenseInfo {
   licenseKey?: string;
   customerEmail?: string;
   activationId?: string;
-  offlineCertificate?: any;
+  offlineCertificate?: NuvanaOfflineCertificate;
 }
 
 export interface BillSizeSpec {
@@ -463,6 +484,11 @@ export interface IPCApi {
     getActivations: () => Promise<any[]>;
     revoke: (licenseKey: string) => Promise<{ success: boolean; message: string }>;
     startTrial: () => Promise<void>;
+    uploadOfflineCertificate: (certificateData: string | object) => Promise<{ success: boolean; message: string }>;
+    generateOfflineCertificate: (validDays?: number) => Promise<{ success: boolean; certificate?: any; message: string }>;
+    downloadOfflineCertificate: () => Promise<{ success: boolean; message: string }>;
+    importOfflineCertificate: () => Promise<{ success: boolean; message: string }>;
+    isOfflineMode: () => Promise<boolean>;
   };
 
   // Print

@@ -1,15 +1,20 @@
-import crypto from "crypto";
-import axios, { AxiosResponse } from "axios";
+import axios from "axios";
+import * as crypto from "crypto";
 import nacl from "tweetnacl";
-import { decodeUTF8 } from "tweetnacl-util";
 
-interface LicenseResponse {
+export interface NuvanaOptions {
+  baseUrl: string;
+  productCode: string;
+  secret: string;
+}
+
+export interface LicenseResponse {
   ok: boolean;
   error?: string;
   [key: string]: any;
 }
 
-interface Certificate {
+export interface OfflineCertificate {
   payload?: Record<string, any>;
   signature?: string;
   alg?: string;
@@ -19,31 +24,30 @@ interface Certificate {
 export class NuvanaLicenseClient {
   private baseUrl: string;
   private productCode: string;
-  private secret: Buffer;
+  private secret: string;
 
-  constructor(baseUrl: string, productCode: string, secret: string) {
-    this.baseUrl = baseUrl.replace(/\/$/, "");
-    this.productCode = productCode;
-    this.secret = Buffer.from(secret, "utf8");
+  constructor(opts: NuvanaOptions) {
+    this.baseUrl = opts.baseUrl.replace(/\/$/, "");
+    this.productCode = opts.productCode;
+    this.secret = opts.secret;
   }
 
-  private sign(body: Record<string, any>): string {
-    const raw = Buffer.from(JSON.stringify(body));
-    const hmac = crypto.createHmac("sha256", this.secret);
-    hmac.update(raw);
-    return hmac.digest("base64");
-  }
-
-  private async post(endpoint: string, body: Record<string, any>): Promise<LicenseResponse> {
-    body["product_code"] = this.productCode;
+  private sign(body: object): string {
     const raw = JSON.stringify(body);
-    const sig = this.sign(body);
+    const hmac = crypto.createHmac('sha256', this.secret);
+    hmac.update(raw);
+    return hmac.digest('base64');
+  }
 
+  private async post(endpoint: string, body: any): Promise<LicenseResponse> {
+    const data = { product_code: this.productCode, ...body };
+    const signature = this.sign(data);
+    
     try {
-      const res: AxiosResponse = await axios.post(`${this.baseUrl}/${endpoint}`, raw, {
+      const res = await axios.post(`${this.baseUrl}/${endpoint}`, data, {
         headers: {
           "Content-Type": "application/json",
-          "X-Signature": sig,
+          "X-Signature": signature,
         },
         timeout: 10000,
       });
@@ -98,8 +102,20 @@ export class NuvanaLicenseClient {
     return this.post("heartbeat", { license_key, device_hash });
   }
 
-  async generateOfflineCertificate(license_key: string): Promise<LicenseResponse> {
-    return this.post("generate_offline_certificate", { license_key });
+  async generateOfflineCertificate(
+    license_key: string,
+    device_hash: string,
+    device_name?: string,
+    app_version?: string,
+    valid_days: number = 30
+  ): Promise<LicenseResponse> {
+    return this.post("generate_offline_certificate", {
+      license_key,
+      device_hash,
+      device_name,
+      app_version,
+      valid_days,
+    });
   }
 
   async revoke(license_key: string): Promise<LicenseResponse> {
@@ -113,37 +129,48 @@ export class NuvanaLicenseClient {
   // ---------- Offline Certificate Verification ----------
 
   static verifyOfflineCertificate(
-    certificate: Certificate,
+    cert: any,
     publicKeyB64: string
-  ): LicenseResponse {
-    if (certificate.alg !== "Ed25519") {
-      return { ok: false, error: "unsupported_alg" };
-    }
-
-    const payload = certificate.payload;
-    const sigB64 = certificate.signature;
-    if (!payload || !sigB64) {
+  ): { ok: boolean; error?: string; payload?: any } {
+    if (!cert?.payload || !cert?.signature || cert?.alg !== "Ed25519") {
       return { ok: false, error: "bad_certificate" };
     }
 
-    const raw = Buffer.from(JSON.stringify(payload));
-    const sig = Buffer.from(sigB64, "base64");
-    const pk = Buffer.from(publicKeyB64.replace("base64:", ""), "base64");
+    // The payload must be stringified exactly as it was when signed
+    const payloadStr = JSON.stringify(cert.payload);
+    const sig = Buffer.from(cert.signature, "base64");
+    
+    // Handle public key with or without "base64:" prefix
+    const cleanKey = publicKeyB64.replace("base64:", "");
+    const pk = Buffer.from(cleanKey, "base64");
 
     try {
-      const valid = nacl.sign.detached.verify(raw, sig, pk);
-      if (!valid) return { ok: false, error: "bad_signature" };
-    } catch {
+      const ok = nacl.sign.detached.verify(
+        new TextEncoder().encode(payloadStr),
+        new Uint8Array(sig),
+        new Uint8Array(pk)
+      );
+      if (!ok) {
+        console.error("Signature verification failed");
+        return { ok: false, error: "bad_signature" };
+      }
+    } catch (error) {
+      console.error("Signature verification error:", error);
       return { ok: false, error: "bad_signature" };
     }
 
     // Validate time window
     const now = new Date();
-    const validUntil = new Date(payload["valid_until"]);
-    if (now > validUntil) {
+    const vu = new Date(cert.payload.valid_until);
+    if (now > vu) {
       return { ok: false, error: "expired_offline_cert" };
     }
 
-    return { ok: true, payload };
+    // Validate that it's an offline certificate
+    if (cert.payload.type !== "offline_cert") {
+      return { ok: false, error: "invalid_cert_type" };
+    }
+
+    return { ok: true, payload: cert.payload };
   }
 }

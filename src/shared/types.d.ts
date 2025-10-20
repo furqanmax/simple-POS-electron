@@ -144,6 +144,25 @@ export interface Settings {
     font_scale_override?: number;
     theme?: string;
 }
+export interface NuvanaOfflineCertificate {
+    payload: {
+        type: 'offline_cert';
+        version: number;
+        product_code: string;
+        license_key: string;
+        device_hash: string;
+        device_name?: string | null;
+        app_version?: string | null;
+        issued_at: string;
+        valid_until: string;
+        constraints?: {
+            max_activations?: number;
+        };
+    };
+    signature: string;
+    alg: 'Ed25519';
+    version: number;
+}
 export interface LicenseState {
     id: number;
     plan: LicensePlan;
@@ -183,7 +202,7 @@ export interface LicenseInfo {
     licenseKey?: string;
     customerEmail?: string;
     activationId?: string;
-    offlineCertificate?: any;
+    offlineCertificate?: NuvanaOfflineCertificate;
 }
 export interface BillSizeSpec {
     width: number;

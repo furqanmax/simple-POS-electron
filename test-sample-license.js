@@ -7,14 +7,14 @@
 // SAMPLE LICENSE DATA STRUCTURES
 // ================================================
 
-// Sample License Key (what you would enter in the app)
-const SAMPLE_LICENSE_KEY = "NUV-PRO-A1B2-C3D4-E5F6-G7H8-I9J0-K1L2-M3N4-O5P6-Q7R8-S9T0-2024";
+// Sample License Key (what you would enter in the app - actual Nuvana format)
+const SAMPLE_LICENSE_KEY = "SIM-POS-ZWGA-N6T4-LVPT-VLV3-C68A";
 
 // Sample API Response from Nuvana verify endpoint
 const SAMPLE_VERIFY_RESPONSE = {
   ok: true,
-  license_key: "NUV-PRO-A1B2-C3D4-E5F6-G7H8-I9J0-K1L2-M3N4-O5P6-Q7R8-S9T0-2024",
-  product_code: "TEST-SIMPLEPOS-2024",
+  license_key: "SIM-POS-ZWGA-N6T4-LVPT-VLV3-C68A",
+  product_code: "SIM-POS",
   customer_email: "john.doe@example.com",
   customer_name: "John Doe",
   status: "active",
@@ -48,26 +48,25 @@ const SAMPLE_ACTIVATE_RESPONSE = {
   app_version: "1.0.0"
 };
 
-// Sample Offline Certificate
+// Sample Offline Certificate (Actual Nuvana Format)
 const SAMPLE_OFFLINE_CERTIFICATE = {
-  alg: "Ed25519",
-  version: 1,
   payload: {
-    license_key: "NUV-PRO-A1B2-C3D4-E5F6-G7H8-I9J0-K1L2-M3N4-O5P6-Q7R8-S9T0-2024",
-    product_code: "TEST-SIMPLEPOS-2024",
-    customer_email: "john.doe@example.com",
-    valid_until: "2025-02-15T23:59:59Z",  // 30 days from generation
-    features: {
-      max_users: -1,
-      max_orders: -1,
-      can_export: true,
-      can_backup: true,
-      multiple_templates: true,
-      installments: true,
-      advanced_reports: true
+    type: "offline_cert",
+    version: 1,
+    product_code: "SIM-POS",
+    license_key: "SIM-POS-ZWGA-N6T4-LVPT-VLV3-C68A",
+    device_hash: "123546",
+    device_name: null,
+    app_version: null,
+    issued_at: "2025-10-20T08:50:04+00:00",
+    valid_until: "2025-11-03T08:50:04+00:00",
+    constraints: {
+      max_activations: 1
     }
   },
-  signature: "MEUCIQDLKJHGfdsakjhgfd7632jkhgfdKJHGkjhgfd8732kjhgfdsaIgYUhjgfds98732kjhgfdsakjhgfd87321kjhgfds=="
+  signature: "Wr93oKDkomUXlWOcIyu4wlyfjMANbavFNlwvPX3XfgUtUn1CM+ItX+nK/EqMOGI84uF57iGCMsj5X0638lGRBA==",
+  alg: "Ed25519",
+  version: 1
 };
 
 // Sample Activations List
@@ -99,7 +98,7 @@ const TEST_CONFIG = {
   baseUrl: "https://licensing.nuvanasolutions.in",
   
   // Your Product Configuration (from Nuvana Dashboard)
-  productCode: "TEST-SIMPLEPOS-2024",
+  productCode: "SIM-POS",
   
   // HMAC Secret for API signing (keep secret!)
   secret: "sk_test_4eC39HqLyjWDarjtT1zdp7dc8hY5kL9mNpQrStUvWxXz",
@@ -174,10 +173,11 @@ console.log();
 console.log("7. LICENSE KEY FORMATS BY PLAN:");
 console.log("--------------------------------");
 const licensePlans = {
-  "Trial (30 days)": "NUV-TRIAL-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-2024",
-  "Monthly": "NUV-MTH01-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-2024",
-  "Quarterly": "NUV-QTR03-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-2024",
-  "Annual": "NUV-ANN12-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-2024"
+  "Trial (30 days)": "SIM-POS-TRIAL-XXXX-XXXX-XXXX",
+  "Monthly": "SIM-POS-MTH1-XXXX-XXXX-XXXX",
+  "Quarterly": "SIM-POS-QTR3-XXXX-XXXX-XXXX",
+  "Annual": "SIM-POS-ANN1-XXXX-XXXX-XXXX",
+  "Example (Real)": "SIM-POS-ZWGA-N6T4-LVPT-VLV3-C68A"
 };
 
 for (const [plan, format] of Object.entries(licensePlans)) {

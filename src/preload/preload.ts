@@ -156,6 +156,11 @@ const api: IPCApi = {
     getActivations: () => ipcRenderer.invoke('license:getActivations'),
     revoke: (licenseKey: string) => ipcRenderer.invoke('license:revoke', licenseKey),
     startTrial: () => ipcRenderer.invoke('license:startTrial'),
+    uploadOfflineCertificate: (certificateData: string | object) => ipcRenderer.invoke('license:uploadOfflineCertificate', certificateData),
+    generateOfflineCertificate: (validDays?: number) => ipcRenderer.invoke('license:generateOfflineCertificate', validDays),
+    downloadOfflineCertificate: () => ipcRenderer.invoke('license:downloadOfflineCertificate'),
+    importOfflineCertificate: () => ipcRenderer.invoke('license:importOfflineCertificate'),
+    isOfflineMode: () => ipcRenderer.invoke('license:isOfflineMode'),
   },
 
   print: {

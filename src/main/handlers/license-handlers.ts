@@ -2,7 +2,7 @@ import { IpcMain, dialog, app } from 'electron';
 import { dbManager } from '../database';
 import { LicenseState, LicensePlan } from '../../shared/types';
 import { nuvanaLicenseService, NuvanaLicenseInfo } from '../services/nuvana-license-service';
-import * as fs from 'fs';
+import * as fs from 'fs/promises';
 import * as path from 'path';
 
 export function registerLicenseHandlers(ipcMain: IpcMain): void {
@@ -83,7 +83,7 @@ export function registerLicenseHandlers(ipcMain: IpcMain): void {
     });
     
     if (filePath) {
-      fs.writeFileSync(filePath, debugInfo);
+      await fs.writeFile(filePath, debugInfo);
     }
   });
 
@@ -100,7 +100,7 @@ export function registerLicenseHandlers(ipcMain: IpcMain): void {
     
     if (filePaths && filePaths.length > 0) {
       try {
-        const licenseKey = fs.readFileSync(filePaths[0], 'utf-8').trim();
+        const licenseKey = (await fs.readFile(filePaths[0], 'utf-8')).trim();
         return await nuvanaLicenseService.activateLicense(licenseKey);
       } catch (error: any) {
         return { success: false, message: 'Failed to read license file: ' + error.message };
@@ -149,5 +149,73 @@ export function registerLicenseHandlers(ipcMain: IpcMain): void {
   // Start trial
   ipcMain.handle('license:startTrial', async (): Promise<void> => {
     nuvanaLicenseService.startTrial();
+  });
+
+  // Upload offline certificate
+  ipcMain.handle('license:uploadOfflineCertificate', async (_evt, certificateData: string | object): Promise<{ success: boolean; message: string }> => {
+    return await nuvanaLicenseService.uploadOfflineCertificate(certificateData);
+  });
+
+  // Generate offline certificate for current license
+  ipcMain.handle('license:generateOfflineCertificate', async (_evt, validDays: number = 30): Promise<{ success: boolean; certificate?: any; message: string }> => {
+    return await nuvanaLicenseService.generateOfflineCertificate(validDays);
+  });
+
+  // Download offline certificate as file
+  ipcMain.handle('license:downloadOfflineCertificate', async (): Promise<{ success: boolean; message: string }> => {
+    try {
+      const result = await nuvanaLicenseService.generateOfflineCertificate(30);
+      
+      if (!result.success || !result.certificate) {
+        return { success: false, message: result.message || 'Failed to generate certificate' };
+      }
+      
+      const { filePath } = await dialog.showSaveDialog({
+        title: 'Save Offline Certificate',
+        defaultPath: `simplepos-offline-cert-${new Date().toISOString().split('T')[0]}.nva.json`,
+        filters: [{ name: 'Nuvana Certificate', extensions: ['nva.json', 'json'] }]
+      });
+      
+      if (!filePath) {
+        return { success: false, message: 'Save cancelled' };
+      }
+      
+      await fs.writeFile(filePath, JSON.stringify(result.certificate, null, 2));
+      return { success: true, message: 'Certificate saved successfully' };
+    } catch (error: any) {
+      return { success: false, message: 'Failed to save certificate: ' + error.message };
+    }
+  });
+
+  // Import offline certificate from file
+  ipcMain.handle('license:importOfflineCertificate', async (): Promise<{ success: boolean; message: string }> => {
+    try {
+      const { filePaths } = await dialog.showOpenDialog({
+        title: 'Import Offline Certificate',
+        filters: [{ name: 'Certificate Files', extensions: ['nva.json', 'json', 'txt'] }],
+        properties: ['openFile']
+      });
+      
+      if (!filePaths || filePaths.length === 0) {
+        return { success: false, message: 'No file selected' };
+      }
+      
+      const certificateData = await fs.readFile(filePaths[0], 'utf8');
+      return await nuvanaLicenseService.uploadOfflineCertificate(certificateData);
+    } catch (error: any) {
+      return { success: false, message: 'Failed to import certificate: ' + error.message };
+    }
+  });
+
+  // Check if running in offline mode
+  ipcMain.handle('license:isOfflineMode', async (): Promise<boolean> => {
+    // Simple check - in production you might want to actually test connectivity
+    try {
+      const axios = require('axios');
+      await axios.get(process.env.NUVANA_LICENSE_URL || 'https://licensing.nuvanasolutions.in', { timeout: 3000 });
+      return false;
+    } catch {
+      return true;
+    }
   });
 }

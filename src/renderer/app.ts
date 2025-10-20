@@ -3385,6 +3385,15 @@ async function renderSettings() {
             <button class="btn btn-secondary" onclick="importLicenseFile()">
               <span>📁</span> Import from File
             </button>
+            <button class="btn btn-info" onclick="importOfflineCertificate()">
+              <span>📁</span> Import Certificate File
+            </button>
+            <button class="btn btn-info" onclick="uploadOfflineCertificate()">
+              <span>📤</span> Paste Certificate
+            </button>
+            <button class="btn btn-info" onclick="downloadOfflineCertificate()" id="download-cert-btn" style="display: none;">
+              <span>💾</span> Download Certificate
+            </button>
             <button class="btn btn-secondary" onclick="checkLicenseUpdates()">
               <span>🔄</span> Check Updates
             </button>
@@ -3841,38 +3850,90 @@ async function checkLicense(): Promise<boolean> {
   try {
     globalLicenseInfo = await window.posAPI.license.getInfo();
     
-    if (!globalLicenseInfo.isValid) {
-      if (globalLicenseInfo.status === 'tampered') {
-        alert('License validation failed: System clock manipulation detected.\n\nPlease correct your system time and restart the application.');
+    // Handle different license statuses
+    switch (globalLicenseInfo.status) {
+      case 'tampered':
+        alert('⚠️ License Security Alert\n\nSystem clock manipulation detected.\nPlease correct your system time and restart the application.');
         return false;
-      }
-      return false;
+        
+      case 'expired':
+        // Check if we have an offline certificate that might still be valid
+        if (globalLicenseInfo.offlineCertificate) {
+          showToast('🔐 Running with offline certificate', 'info');
+          return true;
+        }
+        // No grace period left
+        if (globalLicenseInfo.graceRemaining <= 0) {
+          return false;
+        }
+        break;
+        
+      case 'invalid':
+        return false;
+        
+      case 'trial':
+        // Show trial status
+        if (globalLicenseInfo.daysRemaining > 0) {
+          showToast(`📋 Trial mode: ${globalLicenseInfo.daysRemaining} days remaining`, 'info');
+          
+          // Show trial limitations
+          if (globalLicenseInfo.features) {
+            const limits = [];
+            if (globalLicenseInfo.features.maxUsers !== -1) {
+              limits.push(`${globalLicenseInfo.features.maxUsers} users`);
+            }
+            if (globalLicenseInfo.features.maxOrders !== -1) {
+              limits.push(`${globalLicenseInfo.features.maxOrders} orders`);
+            }
+            if (limits.length > 0) {
+              showToast(`Trial limits: ${limits.join(', ')}`, 'info');
+            }
+          }
+        } else {
+          showToast('❌ Trial expired - Please activate a license', 'error');
+          return false;
+        }
+        break;
+        
+      case 'grace':
+        showToast(`⏳ Grace period: ${globalLicenseInfo.graceRemaining} days remaining`, 'warning');
+        break;
+        
+      case 'valid':
+        // Show warnings for expiring licenses
+        if (globalLicenseInfo.daysRemaining <= 7 && globalLicenseInfo.daysRemaining > 0) {
+          showToast(`⚠️ License expires in ${globalLicenseInfo.daysRemaining} days`, 'warning');
+        }
+        break;
     }
     
-    // Show warnings for expiring licenses
-    if (globalLicenseInfo.daysRemaining <= 7 && globalLicenseInfo.daysRemaining > 0) {
-      showToast(`⚠️ License expires in ${globalLicenseInfo.daysRemaining} days`, 'warning');
-    }
-    
-    // Show grace period warning
-    if (globalLicenseInfo.status === 'grace') {
-      showToast(`⚠️ License expired! ${globalLicenseInfo.graceRemaining} days grace period remaining`, 'warning');
-    }
-    
-    return true;
+    return globalLicenseInfo.isValid;
   } catch (error: any) {
     console.error('License check failed:', error);
+    showToast('❌ License verification failed', 'error');
     return false;
   }
 }
 
 // Start periodic license monitoring
 function startLicenseMonitoring() {
-  // Check every hour
+  // Initial enforcement
+  enforceTrialLimits();
+  
+  // Check every hour for license validity
   setInterval(async () => {
     const valid = await checkLicense();
     if (!valid) {
       showLicenseExpiredPage();
+      return;
+    }
+    
+    // Enforce trial limits if still valid
+    await enforceTrialLimits();
+    
+    // Check for grace period restrictions
+    if (globalLicenseInfo?.status === 'grace') {
+      disableRestrictedFeatures();
     }
   }, 60 * 60 * 1000);
   
@@ -3880,6 +3941,13 @@ function startLicenseMonitoring() {
   setInterval(() => {
     updateLicenseDisplay();
   }, 60 * 1000);
+  
+  // Check trial limits every 5 minutes
+  if (globalLicenseInfo?.status === 'trial') {
+    setInterval(async () => {
+      await enforceTrialLimits();
+    }, 5 * 60 * 1000);
+  }
 }
 
 // Show license expired page
@@ -3887,31 +3955,137 @@ function showLicenseExpiredPage() {
   const app = document.getElementById('app-page');
   if (!app) return;
   
+  // Determine the appropriate title and icon based on status
+  let title = 'License Expired';
+  let icon = '❌';
+  let titleClass = 'text-danger';
+  
+  if (globalLicenseInfo) {
+    switch (globalLicenseInfo.status) {
+      case 'grace':
+        title = 'License in Grace Period';
+        icon = '⏳';
+        titleClass = 'text-warning';
+        break;
+      case 'trial':
+        if (globalLicenseInfo.daysRemaining <= 0) {
+          title = 'Trial Expired';
+          icon = '⏰';
+        }
+        break;
+      case 'tampered':
+        title = 'License Security Alert';
+        icon = '🚫';
+        break;
+      case 'invalid':
+        title = 'Invalid License';
+        icon = '⚠️';
+        break;
+    }
+  }
+  
   app.innerHTML = `
-    <div class="license-expired-container">
-      <div class="license-card">
-        <h1 class="text-danger">License ${globalLicenseInfo?.status === 'grace' ? 'Grace Period' : 'Expired'}</h1>
-        <div class="license-message">
+    <div class="license-expired-container" id="license-expired-container">
+      <div class="license-card" style="max-width: 600px; margin: 100px auto; padding: 40px; background: var(--color-bg-secondary); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+        <div style="text-align: center; margin-bottom: 30px;">
+          <div style="font-size: 64px; margin-bottom: 20px;">${icon}</div>
+          <h1 class="${titleClass}" style="margin-bottom: 10px;">${title}</h1>
+        </div>
+        
+        <div class="license-message" style="margin-bottom: 30px; padding: 20px; background: var(--color-bg-primary); border-radius: 8px;">
           ${globalLicenseInfo ? `
-            <p>${globalLicenseInfo.message}</p>
-            ${globalLicenseInfo.status === 'grace' ? 
-              `<p class="text-warning">Grace period: ${globalLicenseInfo.graceRemaining} days remaining</p>` :
-              '<p class="text-danger">Your license has fully expired.</p>'
-            }
-          ` : '<p>Unable to verify license status.</p>'}
+            ${globalLicenseInfo.status === 'trial' && globalLicenseInfo.daysRemaining <= 0 ? `
+              <p><strong>Your trial period has ended.</strong></p>
+              <p>To continue using SimplePOS, please purchase a license.</p>
+              <ul style="margin-top: 10px; text-align: left;">
+                <li>Monthly Plan: 5 users, 1000 orders/month</li>
+                <li>Quarterly Plan: 10 users, 5000 orders/month</li>
+                <li>Annual Plan: Unlimited users & orders</li>
+              </ul>
+            ` : ''}
+            
+            ${globalLicenseInfo.status === 'grace' ? `
+              <p><strong>Your license has expired but you have a grace period.</strong></p>
+              <p class="text-warning" style="font-size: 18px; margin: 15px 0;">
+                <strong>${globalLicenseInfo.graceRemaining} days</strong> of grace period remaining
+              </p>
+              <p>During the grace period, some features may be limited:</p>
+              <ul style="margin-top: 10px; text-align: left; color: var(--color-text-secondary);">
+                <li>Export functionality disabled</li>
+                <li>Advanced reports unavailable</li>
+                <li>Limited to basic operations</li>
+              </ul>
+              <p style="margin-top: 15px;"><strong>Please renew your license to restore full functionality.</strong></p>
+            ` : ''}
+            
+            ${globalLicenseInfo.status === 'expired' && globalLicenseInfo.graceRemaining <= 0 ? `
+              <p><strong>Your license has fully expired.</strong></p>
+              <p>To continue using SimplePOS, you must:</p>
+              <ol style="margin-top: 10px; text-align: left;">
+                <li>Activate a new license key</li>
+                <li>Import an offline certificate</li>
+                <li>Or start a new trial (if eligible)</li>
+              </ol>
+            ` : ''}
+            
+            ${globalLicenseInfo.status === 'tampered' ? `
+              <p class="text-danger"><strong>System clock manipulation detected!</strong></p>
+              <p>The license system has detected that your system clock has been altered.</p>
+              <p>Please correct your system date and time settings, then restart the application.</p>
+            ` : ''}
+            
+            ${globalLicenseInfo.status === 'invalid' ? `
+              <p><strong>The current license is invalid or corrupted.</strong></p>
+              <p>Please activate a valid license to continue.</p>
+            ` : ''}
+            
+            <p style="margin-top: 15px; font-size: 12px; color: var(--color-text-secondary);">
+              Last checked: ${new Date().toLocaleString()}
+            </p>
+          ` : '<p>Unable to verify license status. Please check your connection and try again.</p>'}
         </div>
         
-        <div class="license-actions">
-          <button class="btn btn-primary" onclick="showLicenseActivation()">Activate License</button>
-          <button class="btn btn-secondary" onclick="importLicenseFile()">Import License File</button>
-          ${globalLicenseInfo?.status === 'grace' ? 
-            '<button class="btn btn-warning" onclick="continueWithGrace()">Continue (Limited)</button>' : ''
-          }
+        <div class="license-actions" style="display: grid; gap: 10px; margin-bottom: 20px;">
+          <button class="btn btn-primary" onclick="showLicenseActivation()" style="padding: 12px;">
+            🔑 Activate License
+          </button>
+          
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <button class="btn btn-secondary" onclick="importLicenseFile()">
+              📁 Import License File
+            </button>
+            <button class="btn btn-info" onclick="importOfflineCertificate()">
+              🔐 Import Certificate
+            </button>
+          </div>
+          
+          ${globalLicenseInfo?.status === 'grace' ? `
+            <button class="btn btn-warning" onclick="continueWithGrace()" style="padding: 12px;">
+              ⏳ Continue with Limited Features (${globalLicenseInfo.graceRemaining} days left)
+            </button>
+          ` : ''}
+          
+          ${globalLicenseInfo?.status === 'trial' || globalLicenseInfo?.status === 'expired' ? `
+            <button class="btn btn-info" onclick="startNewTrial()" id="trial-btn">
+              🎯 Start New Trial (30 days)
+            </button>
+          ` : ''}
+          
+          <button class="btn btn-secondary" onclick="refreshLicenseStatus()">
+            🔄 Refresh Status
+          </button>
         </div>
         
-        <div class="license-help">
-          <p>Need help? Contact support at support@yourbrand.com</p>
-          <button class="btn btn-link" onclick="exportLicenseDebug()">Export Debug Info</button>
+        <div class="license-help" style="text-align: center; padding-top: 20px; border-top: 1px solid var(--color-border);">
+          <p style="margin-bottom: 10px;">Need help? Contact support</p>
+          <div style="display: flex; gap: 10px; justify-content: center;">
+            <button class="btn btn-link" onclick="exportLicenseDebug()">
+              📊 Export Debug Info
+            </button>
+            <button class="btn btn-link" onclick="window.open('https://licensing.nuvanasolutions.in', '_blank')">
+              🌐 License Portal
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -4194,7 +4368,159 @@ async function continueWithGrace() {
   showMainApp();
   navigateTo('dashboard');
   startLicenseMonitoring();
+  
+  // Show grace period restrictions
   showToast('⚠️ Running in grace period with limited features', 'warning');
+  
+  // Disable restricted features
+  disableRestrictedFeatures();
+}
+
+// Check if a specific feature is available based on license
+function isFeatureAvailable(feature: string): boolean {
+  if (!globalLicenseInfo) return false;
+  
+  // If license is tampered or invalid, block all features
+  if (globalLicenseInfo.status === 'tampered' || globalLicenseInfo.status === 'invalid') {
+    return false;
+  }
+  
+  // If expired with no grace period, block all features
+  if (globalLicenseInfo.status === 'expired' && globalLicenseInfo.graceRemaining <= 0) {
+    return false;
+  }
+  
+  // Check specific features based on license
+  const features = globalLicenseInfo.features;
+  if (!features) return false;
+  
+  // During grace period, restrict certain features
+  if (globalLicenseInfo.status === 'grace') {
+    const gracePeriodBlockedFeatures = ['export', 'backup', 'advancedReports', 'multipleTemplates'];
+    if (gracePeriodBlockedFeatures.includes(feature)) {
+      return false;
+    }
+  }
+  
+  // Check feature availability
+  switch (feature) {
+    case 'export':
+      return features.canExport;
+    case 'backup':
+      return features.canBackup;
+    case 'advancedReports':
+      return features.advancedReports;
+    case 'multipleTemplates':
+      return features.multipleTemplates;
+    case 'installments':
+      return features.installments;
+    case 'emailSupport':
+      return features.emailSupport;
+    case 'phoneSupport':
+      return features.phoneSupport;
+    default:
+      return true;
+  }
+}
+
+// Check if within trial/license limits
+function checkUsageLimits(type: 'users' | 'orders', count: number): boolean {
+  if (!globalLicenseInfo || !globalLicenseInfo.features) return false;
+  
+  const features = globalLicenseInfo.features;
+  
+  if (type === 'users') {
+    if (features.maxUsers === -1) return true; // Unlimited
+    return count <= features.maxUsers;
+  }
+  
+  if (type === 'orders') {
+    if (features.maxOrders === -1) return true; // Unlimited
+    return count <= features.maxOrders;
+  }
+  
+  return false;
+}
+
+// Disable features that are restricted
+function disableRestrictedFeatures() {
+  // Find and disable export buttons
+  const exportButtons = document.querySelectorAll('[data-feature="export"]');
+  exportButtons.forEach(btn => {
+    (btn as HTMLButtonElement).disabled = true;
+    btn.setAttribute('title', 'Feature not available in grace period');
+  });
+  
+  // Find and disable backup buttons
+  const backupButtons = document.querySelectorAll('[data-feature="backup"]');
+  backupButtons.forEach(btn => {
+    (btn as HTMLButtonElement).disabled = true;
+    btn.setAttribute('title', 'Feature not available in grace period');
+  });
+  
+  // Add visual indicators for restricted features
+  const restrictedElements = document.querySelectorAll('.requires-license');
+  restrictedElements.forEach(elem => {
+    elem.classList.add('restricted');
+  });
+}
+
+// Enforce trial limits
+async function enforceTrialLimits() {
+  if (!globalLicenseInfo) return;
+  
+  // Only enforce for trial licenses
+  if (globalLicenseInfo.status !== 'trial') return;
+  
+  const features = globalLicenseInfo.features;
+  if (!features) return;
+  
+  // Check user limit
+  if (features.maxUsers !== -1) {
+    const userCount = await getUserCount();
+    if (userCount >= features.maxUsers) {
+      showToast(`⚠️ Trial limit reached: Maximum ${features.maxUsers} users allowed`, 'warning');
+      // Disable add user functionality
+      const addUserBtn = document.getElementById('add-user-btn');
+      if (addUserBtn) {
+        (addUserBtn as HTMLButtonElement).disabled = true;
+        addUserBtn.setAttribute('title', `Trial limit: ${features.maxUsers} users`);
+      }
+    }
+  }
+  
+  // Check order limit
+  if (features.maxOrders !== -1) {
+    const orderCount = await getOrderCount();
+    if (orderCount >= features.maxOrders) {
+      showToast(`⚠️ Trial limit reached: Maximum ${features.maxOrders} orders allowed`, 'warning');
+      // Disable new order functionality
+      const newOrderBtn = document.getElementById('new-order-btn');
+      if (newOrderBtn) {
+        (newOrderBtn as HTMLButtonElement).disabled = true;
+        newOrderBtn.setAttribute('title', `Trial limit: ${features.maxOrders} orders`);
+      }
+    }
+  }
+}
+
+// Helper functions to get counts (implement these based on your data source)
+async function getUserCount(): Promise<number> {
+  try {
+    const users = await window.posAPI.users.getAll();
+    return users.length;
+  } catch {
+    return 0;
+  }
+}
+
+async function getOrderCount(): Promise<number> {
+  try {
+    const orders = await window.posAPI.orders.getAll();
+    return orders.length;
+  } catch {
+    return 0;
+  }
 }
 
 async function checkLicenseUpdates() {
@@ -4216,12 +4542,21 @@ async function displayLicenseInfo(licenseInfo: any) {
   const licenseDisplay = document.getElementById('license-info-display');
   if (!licenseDisplay) return;
   
+  // Check if using offline certificate
+  const isOfflineMode = licenseInfo.offlineCertificate && licenseInfo.status === 'valid';
+  const hasOfflineCert = licenseInfo.offlineCertificate !== null;
+  
   // Determine status color and icon
   let statusColor = 'text-danger';
   let statusIcon = '❌';
+  let statusText = licenseInfo.status.toUpperCase();
   
   if (licenseInfo.isValid) {
-    if (licenseInfo.daysRemaining <= 7) {
+    if (isOfflineMode) {
+      statusColor = 'text-info';
+      statusIcon = '🔐';
+      statusText = 'OFFLINE MODE';
+    } else if (licenseInfo.daysRemaining <= 7) {
       statusColor = 'text-warning';
       statusIcon = '⚠️';
     } else {
@@ -4240,18 +4575,49 @@ async function displayLicenseInfo(licenseInfo: any) {
     statusIcon = '🚫';
   }
 
+  // Parse offline certificate if present
+  let offlineCertDetails = null;
+  if (hasOfflineCert && licenseInfo.offlineCertificate) {
+    try {
+      const cert = typeof licenseInfo.offlineCertificate === 'string' 
+        ? JSON.parse(licenseInfo.offlineCertificate) 
+        : licenseInfo.offlineCertificate;
+      offlineCertDetails = cert.payload || cert;
+    } catch (e) {
+      console.error('Failed to parse offline certificate:', e);
+    }
+  }
+
   // Create comprehensive display
   licenseDisplay.innerHTML = `
     <div class="license-details">
+      <!-- Offline Mode Indicator -->
+      ${isOfflineMode ? `
+      <div class="alert alert-info" style="padding: 12px; margin-bottom: 20px; border-radius: 8px; background: rgba(13, 202, 240, 0.1); border: 1px solid #0dcaf0;">
+        <strong>🔐 Running in Offline Mode</strong><br>
+        <small>Using offline certificate. Internet connection not required for license validation.</small>
+      </div>
+      ` : hasOfflineCert ? `
+      <div class="alert alert-success" style="padding: 12px; margin-bottom: 20px; border-radius: 8px; background: rgba(25, 135, 84, 0.1); border: 1px solid #198754;">
+        <strong>🔒 Offline Certificate Available</strong><br>
+        <small>You can work offline using the stored certificate when needed.</small>
+      </div>
+      ` : ''}
+
       <!-- Main Status Card -->
-      <div class="status-card" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 15px; background: var(--color-bg-tertiary); border-radius: 8px;">
+      <div class="status-card" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 15px; background: var(--color-bg-tertiary); border-radius: 8px; ${isOfflineMode ? 'border: 2px solid #0dcaf0;' : ''}">
         <div>
           <h3 style="margin: 0; color: var(--color-text);">
             ${statusIcon} ${licenseInfo.plan} Plan
           </h3>
           <p style="margin: 5px 0 0 0; font-size: 14px; color: var(--color-text-secondary);">
-            Status: <span class="${statusColor}" style="font-weight: bold;">${licenseInfo.status.toUpperCase()}</span>
+            Status: <span class="${statusColor}" style="font-weight: bold;">${statusText}</span>
           </p>
+          ${offlineCertDetails ? `
+          <p style="margin: 5px 0 0 0; font-size: 12px; color: var(--color-text-secondary);">
+            Certificate Type: ${offlineCertDetails.type || 'N/A'} v${offlineCertDetails.version || '1'}
+          </p>
+          ` : ''}
         </div>
         <div style="text-align: right;">
           ${licenseInfo.daysRemaining >= 0 ? `
@@ -4275,7 +4641,7 @@ async function displayLicenseInfo(licenseInfo: any) {
         <div class="detail-item">
           <strong style="color: var(--color-text-secondary); font-size: 12px;">License Key:</strong>
           <div style="font-family: monospace; font-size: 11px; margin-top: 5px;">
-            ${licenseInfo.licenseKey.substring(0, 20)}...
+            ${licenseInfo.licenseKey.length > 25 ? licenseInfo.licenseKey.substring(0, 25) + '...' : licenseInfo.licenseKey}
             <button class="btn btn-sm" onclick="copyLicenseKey('${licenseInfo.licenseKey}')" style="padding: 2px 8px; margin-left: 5px;">
               📋 Copy
             </button>
@@ -4303,6 +4669,40 @@ async function displayLicenseInfo(licenseInfo: any) {
           <strong style="color: var(--color-text-secondary); font-size: 12px;">Activation ID:</strong>
           <div style="font-family: monospace; font-size: 11px; margin-top: 5px;">
             ${licenseInfo.activationId}
+          </div>
+        </div>
+        ` : ''}
+        
+        ${offlineCertDetails ? `
+        <div class="detail-item">
+          <strong style="color: var(--color-text-secondary); font-size: 12px;">Certificate Issued:</strong>
+          <div style="margin-top: 5px;">
+            ${offlineCertDetails.issued_at ? new Date(offlineCertDetails.issued_at).toLocaleDateString() : 'N/A'}
+            ${offlineCertDetails.issued_at ? `<br><small>${new Date(offlineCertDetails.issued_at).toLocaleTimeString()}</small>` : ''}
+          </div>
+        </div>
+        
+        <div class="detail-item">
+          <strong style="color: var(--color-text-secondary); font-size: 12px;">Certificate Valid Until:</strong>
+          <div style="margin-top: 5px;">
+            ${offlineCertDetails.valid_until ? new Date(offlineCertDetails.valid_until).toLocaleDateString() : 'N/A'}
+            ${offlineCertDetails.valid_until ? `<br><small>${new Date(offlineCertDetails.valid_until).toLocaleTimeString()}</small>` : ''}
+          </div>
+        </div>
+        
+        <div class="detail-item">
+          <strong style="color: var(--color-text-secondary); font-size: 12px;">Device Binding:</strong>
+          <div style="margin-top: 5px;">
+            ${offlineCertDetails.device_hash === '123546' ? '🟡 Test Mode' : 
+              offlineCertDetails.device_hash ? '🔒 Bound to Device' : '🌍 Any Device'}
+            ${offlineCertDetails.device_name ? `<br><small>${offlineCertDetails.device_name}</small>` : ''}
+          </div>
+        </div>
+        
+        <div class="detail-item">
+          <strong style="color: var(--color-text-secondary); font-size: 12px;">Product Code:</strong>
+          <div style="margin-top: 5px; font-family: monospace;">
+            ${offlineCertDetails.product_code || 'N/A'}
           </div>
         </div>
         ` : ''}
@@ -4347,15 +4747,56 @@ async function displayLicenseInfo(licenseInfo: any) {
         </div>
       </details>
 
-      <!-- Offline Mode Indicator -->
-      ${licenseInfo.offlineCertificate ? `
-      <div style="padding: 10px; background: var(--color-bg-tertiary); border-radius: 8px; margin-top: 10px;">
-        <span style="color: var(--color-success);">🔒 Offline certificate available</span>
-        <small style="color: var(--color-text-secondary); margin-left: 10px;">
-          Can work offline until ${new Date(licenseInfo.offlineCertificate.payload?.valid_until || Date.now()).toLocaleDateString()}
-        </small>
+      <!-- Certificate Actions Section -->
+      ${offlineCertDetails ? `
+      <details open style="margin-bottom: 15px;">
+        <summary style="cursor: pointer; font-weight: bold; margin-bottom: 15px;">
+          <span style="font-size: 16px;">🔐 Offline Certificate Details</span>
+        </summary>
+        <div style="background: var(--color-bg-tertiary); border-radius: 8px; padding: 15px;">
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+            <div>
+              <strong style="color: var(--color-text-secondary); font-size: 11px;">Certificate Status:</strong>
+              <div style="margin-top: 5px;">
+                ${new Date(offlineCertDetails.valid_until) > new Date() ? 
+                  '<span style="color: var(--color-success);">✅ Valid</span>' : 
+                  '<span style="color: var(--color-danger);">❌ Expired</span>'}
+              </div>
+            </div>
+            <div>
+              <strong style="color: var(--color-text-secondary); font-size: 11px;">Days Remaining:</strong>
+              <div style="margin-top: 5px;">
+                ${Math.max(0, Math.ceil((new Date(offlineCertDetails.valid_until).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)))} days
+              </div>
+            </div>
+            <div>
+              <strong style="color: var(--color-text-secondary); font-size: 11px;">Max Activations:</strong>
+              <div style="margin-top: 5px;">
+                ${offlineCertDetails.constraints?.max_activations || 'Unlimited'}
+              </div>
+            </div>
+            <div>
+              <strong style="color: var(--color-text-secondary); font-size: 11px;">App Version:</strong>
+              <div style="margin-top: 5px;">
+                ${offlineCertDetails.app_version || 'Any'}
+              </div>
+            </div>
+          </div>
+          ${offlineCertDetails.device_hash === '123546' ? `
+          <div class="alert alert-warning" style="margin-top: 10px; padding: 8px; font-size: 12px; background: rgba(255, 193, 7, 0.1); border: 1px solid #ffc107; border-radius: 4px;">
+            ⚠️ <strong>Test Certificate:</strong> This is a test certificate with placeholder device binding. For production use, generate a certificate with actual device binding.
+          </div>
+          ` : ''}
+        </div>
+      </details>
+      ` : !licenseInfo.licenseKey ? '' : `
+      <div class="alert alert-info" style="padding: 10px; margin-bottom: 20px; border-radius: 8px; background: rgba(13, 202, 240, 0.1); border: 1px solid #0dcaf0;">
+        <strong>💡 Tip:</strong> Generate an offline certificate to continue working without internet connection.
+        <button class="btn btn-sm btn-info" onclick="downloadOfflineCertificate()" style="margin-left: 10px;">
+          Download Certificate
+        </button>
       </div>
-      ` : ''}
+      `}
     </div>
   `;
 }
@@ -4379,16 +4820,19 @@ function updateLicenseButtons(licenseInfo: any) {
   const deactivateBtn = document.getElementById('deactivate-btn') as HTMLElement;
   const activationsBtn = document.getElementById('activations-btn') as HTMLElement;
   const trialBtn = document.getElementById('trial-btn') as HTMLElement;
+  const downloadCertBtn = document.getElementById('download-cert-btn') as HTMLElement;
   
   if (licenseInfo.licenseKey) {
     // Has a license key, show deactivate and activations
     if (deactivateBtn) deactivateBtn.style.display = 'inline-block';
     if (activationsBtn) activationsBtn.style.display = 'inline-block';
+    if (downloadCertBtn) downloadCertBtn.style.display = 'inline-block';
     if (trialBtn) trialBtn.style.display = 'none';
   } else {
     // No license key (trial or expired trial)
     if (deactivateBtn) deactivateBtn.style.display = 'none';
     if (activationsBtn) activationsBtn.style.display = 'none';
+    if (downloadCertBtn) downloadCertBtn.style.display = 'none';
     if (trialBtn && licenseInfo.status === 'expired') {
       trialBtn.style.display = 'inline-block';
     }
@@ -4397,12 +4841,30 @@ function updateLicenseButtons(licenseInfo: any) {
 
 async function refreshLicenseStatus() {
   try {
-    showToast('Refreshing license status...', 'info');
+    // Check if we're online or offline
+    const isOffline = await window.posAPI.license.isOfflineMode().catch(() => false);
+    
+    if (isOffline) {
+      showToast('🔐 Refreshing license status (Offline Mode)...', 'info');
+    } else {
+      showToast('🔄 Refreshing license status...', 'info');
+    }
+    
     const licenseInfo = await window.posAPI.license.getInfo();
     await displayLicenseInfo(licenseInfo);
     globalLicenseInfo = licenseInfo;
     updateLicenseButtons(licenseInfo);
-    showToast('License status refreshed', 'success');
+    
+    // Show appropriate message based on status
+    if (licenseInfo.offlineCertificate && licenseInfo.status === 'valid') {
+      showToast('🔐 License status refreshed (Offline Certificate Active)', 'success');
+    } else if (licenseInfo.isValid) {
+      showToast('✅ License status refreshed', 'success');
+    } else if (licenseInfo.status === 'grace') {
+      showToast('⏳ License in grace period', 'warning');
+    } else {
+      showToast('❌ License expired or invalid', 'error');
+    }
   } catch (error: any) {
     showToast('Failed to refresh license: ' + error.message, 'error');
   }
@@ -4531,23 +4993,60 @@ async function testLicenseAPI() {
 }
 
 async function startNewTrial() {
-  const confirm = window.confirm(
-    'Start a new 30-day trial?\n\n' +
-    'This will:\n' +
-    '• Reset your license to trial mode\n' +
-    '• Give you 30 days of trial access\n' +
-    '• Limited to 2 users and 100 orders\n\n' +
-    'Continue?'
-  );
-  
-  if (!confirm) return;
-  
+  // Check if eligible for new trial
   try {
+    const licenseInfo = await window.posAPI.license.getInfo();
+    
+    // Check if already had a trial (implement your business logic)
+    if (licenseInfo.licenseKey && licenseInfo.status !== 'trial') {
+      const confirmRestart = window.confirm(
+        '⚠️ Previous License Detected\n\n' +
+        'It appears you\'ve already used a license on this device.\n' +
+        'Starting a new trial will reset your license status.\n\n' +
+        'Are you sure you want to continue?'
+      );
+      
+      if (!confirmRestart) return;
+    }
+    
+    const confirm = window.confirm(
+      '🎯 Start New 30-Day Trial\n\n' +
+      'Trial Features:\n' +
+      '✓ 30 days of full access\n' +
+      '✓ Up to 2 users\n' +
+      '✓ Up to 100 orders\n' +
+      '✗ No data export\n' +
+      '✗ No advanced reports\n\n' +
+      'After trial expires, you\'ll need to purchase a license.\n\n' +
+      'Start trial now?'
+    );
+    
+    if (!confirm) return;
+    
+    // Start the trial
+    showToast('Starting trial...', 'info');
     await window.posAPI.license.startTrial();
-    showToast('New trial started successfully', 'success');
+    
+    showToast('✅ Trial started successfully! You have 30 days.', 'success');
+    
+    // Refresh license and redirect to main app
     await refreshLicenseStatus();
+    
+    // Check if we need to reload the app
+    if (document.getElementById('license-expired-container')) {
+      const valid = await checkLicense();
+      if (valid) {
+        showMainApp();
+        navigateTo('dashboard');
+        startLicenseMonitoring();
+        
+        // Enforce trial limits
+        setTimeout(() => enforceTrialLimits(), 1000);
+      }
+    }
   } catch (error: any) {
-    showToast('Failed to start trial: ' + error.message, 'error');
+    console.error('Failed to start trial:', error);
+    showToast('❌ Failed to start trial: ' + error.message, 'error');
   }
 }
 
@@ -4576,6 +5075,186 @@ async function getDeviceHash(): Promise<string> {
   return hashHex;
 }
 
+// Offline Certificate Functions
+async function importOfflineCertificate() {
+  try {
+    const result = await window.posAPI.license.importOfflineCertificate();
+    
+    if (result.success) {
+      showToast('🔐 ' + result.message, 'success');
+      await refreshLicenseStatus();
+      
+      // Show additional info about the certificate
+      const licenseInfo = await window.posAPI.license.getInfo();
+      if (licenseInfo.offlineCertificate) {
+        try {
+          const cert = typeof licenseInfo.offlineCertificate === 'string' 
+            ? JSON.parse(licenseInfo.offlineCertificate) 
+            : licenseInfo.offlineCertificate;
+          const validUntil = new Date(cert.payload?.valid_until);
+          const daysValid = Math.ceil((validUntil.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+          
+          showToast(`📅 Certificate valid for ${daysValid} days (until ${validUntil.toLocaleDateString()})`, 'info');
+        } catch (e) {
+          console.error('Failed to parse certificate details:', e);
+        }
+      }
+    } else {
+      if (result.message.includes('No file selected')) {
+        // User cancelled - no toast needed
+        return;
+      }
+      showToast('❌ ' + result.message, 'error');
+    }
+  } catch (error: any) {
+    showToast('❌ Failed to import certificate: ' + error.message, 'error');
+  }
+}
+
+async function downloadOfflineCertificate() {
+  try {
+    showToast('Generating offline certificate...', 'info');
+    const result = await window.posAPI.license.downloadOfflineCertificate();
+    
+    if (result.success) {
+      showToast(result.message, 'success');
+    } else {
+      showToast(result.message, 'error');
+    }
+  } catch (error: any) {
+    showToast('Failed to download certificate: ' + error.message, 'error');
+  }
+}
+
+async function uploadOfflineCertificate() {
+  // Create modal for manual certificate input
+  const modal = document.createElement('div');
+  modal.className = 'modal';
+  modal.innerHTML = `
+    <div class="modal-content" style="max-width: 700px;">
+      <h2 style="margin-bottom: 20px;">📤 Upload Offline Certificate</h2>
+      
+      <div style="margin-bottom: 15px;">
+        <p style="color: var(--color-text-secondary); margin-bottom: 10px;">
+          Paste your Nuvana offline certificate JSON below. You can obtain this certificate from:
+        </p>
+        <ul style="color: var(--color-text-secondary); margin-left: 20px; margin-bottom: 15px; font-size: 14px;">
+          <li>Using the "Download Offline Certificate" button when online</li>
+          <li>From the Nuvana licensing dashboard</li>
+          <li>From a previously saved .nva.json file</li>
+        </ul>
+        
+        <details style="margin-bottom: 10px;">
+          <summary style="cursor: pointer; color: var(--color-info); font-size: 12px;">View Example Certificate Format</summary>
+          <pre style="background: var(--color-bg-secondary); padding: 10px; margin-top: 10px; border-radius: 4px; font-size: 11px; overflow-x: auto;">
+{
+  "payload": {
+    "type": "offline_cert",
+    "version": 1,
+    "product_code": "SIM-POS",
+    "license_key": "SIM-POS-XXXX-XXXX-XXXX-XXXX",
+    "device_hash": "...",
+    "valid_until": "2025-11-03T08:50:04+00:00",
+    "constraints": { "max_activations": 1 }
+  },
+  "signature": "...",
+  "alg": "Ed25519",
+  "version": 1
+}</pre>
+        </details>
+        
+        <textarea 
+          id="certificate-input"
+          placeholder='Paste your complete certificate JSON here...'
+          style="width: 100%; height: 250px; padding: 10px; font-family: monospace; font-size: 12px; 
+                 background: var(--color-bg-primary); color: var(--color-text); border: 1px solid var(--color-border);
+                 border-radius: 4px; resize: vertical;"
+        ></textarea>
+      </div>
+      
+      <div id="cert-upload-error" style="margin-bottom: 10px; display: none; padding: 8px; border-radius: 4px; background: var(--color-danger-bg); border: 1px solid var(--color-danger);"></div>
+      
+      <div style="display: flex; gap: 10px; justify-content: space-between;">
+        <button class="btn btn-info" onclick="importOfflineCertificate(); this.closest('.modal').remove();">
+          📁 Import from File Instead
+        </button>
+        <div style="display: flex; gap: 10px;">
+          <button class="btn btn-primary" onclick="processCertificateUpload()">
+            🔐 Upload Certificate
+          </button>
+          <button class="btn btn-secondary" onclick="this.closest('.modal').remove()">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  
+  // Focus on textarea
+  const textarea = document.getElementById('certificate-input') as HTMLTextAreaElement;
+  if (textarea) textarea.focus();
+}
+
+async function processCertificateUpload() {
+  const textarea = document.getElementById('certificate-input') as HTMLTextAreaElement;
+  const errorDiv = document.getElementById('cert-upload-error') as HTMLElement;
+  
+  if (!textarea || !textarea.value.trim()) {
+    if (errorDiv) {
+      errorDiv.textContent = 'Please enter a certificate';
+      errorDiv.style.display = 'block';
+    }
+    return;
+  }
+  
+  try {
+    // Validate JSON format
+    let certificate;
+    try {
+      certificate = JSON.parse(textarea.value.trim());
+    } catch {
+      throw new Error('Invalid JSON format. Please ensure the certificate is valid JSON.');
+    }
+    
+    // Basic validation
+    if (!certificate.payload || !certificate.signature || !certificate.alg) {
+      throw new Error('Invalid certificate structure. Missing required fields.');
+    }
+    
+    // Show loading state
+    if (errorDiv) {
+      errorDiv.innerHTML = '<span style="color: var(--color-info);">🔄 Validating certificate...</span>';
+      errorDiv.style.display = 'block';
+    }
+    
+    const result = await window.posAPI.license.uploadOfflineCertificate(certificate);
+    
+    if (result.success) {
+      showToast('🔐 ' + result.message, 'success');
+      document.querySelector('.modal')?.remove();
+      await refreshLicenseStatus();
+      
+      // Show certificate details
+      if (certificate.payload) {
+        const validUntil = new Date(certificate.payload.valid_until);
+        const daysValid = Math.ceil((validUntil.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+        showToast(`📅 Certificate valid for ${daysValid} days (until ${validUntil.toLocaleDateString()})`, 'info');
+      }
+    } else {
+      if (errorDiv) {
+        errorDiv.innerHTML = `<span style="color: var(--color-danger);">❌ ${result.message}</span>`;
+        errorDiv.style.display = 'block';
+      }
+    }
+  } catch (error: any) {
+    if (errorDiv) {
+      errorDiv.innerHTML = `<span style="color: var(--color-danger);">❌ ${error.message}</span>`;
+      errorDiv.style.display = 'block';
+    }
+  }
+}
+
 // Make functions globally available
 (window as any).printOrder = printOrder;
 (window as any).removeItem = removeItem;
@@ -4598,11 +5277,23 @@ async function getDeviceHash(): Promise<string> {
 (window as any).updateLicenseButtons = updateLicenseButtons;
 (window as any).refreshLicenseStatus = refreshLicenseStatus;
 (window as any).showDeactivateLicense = showDeactivateLicense;
+
+// Offline certificate functions
+(window as any).importOfflineCertificate = importOfflineCertificate;
+(window as any).downloadOfflineCertificate = downloadOfflineCertificate;
+(window as any).uploadOfflineCertificate = uploadOfflineCertificate;
+(window as any).processCertificateUpload = processCertificateUpload;
 (window as any).showActivationsList = showActivationsList;
 (window as any).testLicenseAPI = testLicenseAPI;
 (window as any).startNewTrial = startNewTrial;
 (window as any).copyLicenseKey = copyLicenseKey;
 (window as any).togglePassword = togglePassword;
+
+// License enforcement functions
+(window as any).isFeatureAvailable = isFeatureAvailable;
+(window as any).checkUsageLimits = checkUsageLimits;
+(window as any).enforceTrialLimits = enforceTrialLimits;
+(window as any).disableRestrictedFeatures = disableRestrictedFeatures;
 
 // History page functions
 (window as any).renderHistory = renderHistory;
