@@ -149,10 +149,13 @@ const api: IPCApi = {
     checkExpiry: () => ipcRenderer.invoke('license:checkExpiry'),
     checkFeature: (feature: string) => ipcRenderer.invoke('license:checkFeature', feature),
     checkLimit: (type: 'users' | 'orders', current: number) => ipcRenderer.invoke('license:checkLimit', type, current),
-    generateKey: (email: string, plan: any, days: number) => ipcRenderer.invoke('license:generateKey', email, plan, days),
+    issueLicense: (customerName: string, customerEmail: string, maxActivations: number) => ipcRenderer.invoke('license:issueLicense', customerName, customerEmail, maxActivations),
     exportDebug: () => ipcRenderer.invoke('license:exportDebug'),
     importFromFile: () => ipcRenderer.invoke('license:importFromFile'),
     checkUpdates: () => ipcRenderer.invoke('license:checkUpdates'),
+    getActivations: () => ipcRenderer.invoke('license:getActivations'),
+    revoke: (licenseKey: string) => ipcRenderer.invoke('license:revoke', licenseKey),
+    startTrial: () => ipcRenderer.invoke('license:startTrial'),
   },
 
   print: {

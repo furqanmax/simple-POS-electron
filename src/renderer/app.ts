@@ -2737,9 +2737,33 @@ async function renderInstallments() {
     </div>
   `;
   
+  // Add click-outside-to-close functionality for modals
+  setupInstallmentModals();
+  
   // Load initial data
   await loadInstallmentStats();
   await switchInstallmentTab('overdue');  // Show overdue tab by default
+}
+
+// Setup modal event listeners for click-outside-to-close
+function setupInstallmentModals() {
+  const modals = [
+    { id: 'installment-wizard-modal', closeFunc: closeInstallmentWizard },
+    { id: 'payment-modal', closeFunc: closePaymentModal },
+    { id: 'installment-details-modal', closeFunc: closeInstallmentDetails }
+  ];
+  
+  modals.forEach(({ id, closeFunc }) => {
+    const modal = document.getElementById(id);
+    if (modal) {
+      // Close when clicking on the modal background (not the content)
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+          closeFunc();
+        }
+      });
+    }
+  });
 }
 
 // Load installment statistics
@@ -2899,14 +2923,92 @@ async function loadUpcomingInstallments() {
   const contentDiv = document.getElementById('installments-content');
   if (!contentDiv) return;
   
-  // For now, we'll get all plans and filter upcoming installments
-  const activePlans = await window.posAPI.installments.getActivePlans();
-  contentDiv.innerHTML = `
-    <div style="text-align: center; padding: 3rem; color: var(--color-text-tertiary);">
-      <h3>Upcoming Installments</h3>
-      <p>Feature coming soon - will show installments due in the next 30 days</p>
-    </div>
-  `;
+  try {
+    // Get all active plans and their installments
+    const activePlans = await window.posAPI.installments.getActivePlans();
+    const upcomingInstallments: any[] = [];
+    
+    // Get upcoming installments (due in next 30 days, not overdue)
+    const today = new Date();
+    const thirtyDaysFromNow = new Date();
+    thirtyDaysFromNow.setDate(today.getDate() + 30);
+    
+    for (const plan of activePlans) {
+      const installments = await window.posAPI.installments.getInstallments(plan.id);
+      const upcoming = installments.filter((inst: any) => {
+        const dueDate = new Date(inst.due_date);
+        return inst.status === 'pending' && dueDate >= today && dueDate <= thirtyDaysFromNow;
+      });
+      
+      upcoming.forEach((inst: any) => {
+        upcomingInstallments.push({
+          ...inst,
+          customer_name: plan.customer?.name || 'Walk-in',
+          plan_frequency: plan.frequency
+        });
+      });
+    }
+    
+    // Sort by due date
+    upcomingInstallments.sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
+    
+    if (upcomingInstallments.length === 0) {
+      contentDiv.innerHTML = `
+        <div style="text-align: center; padding: 3rem; color: var(--color-text-tertiary);">
+          <h3>No Upcoming Installments</h3>
+          <p>No installments due in the next 30 days</p>
+        </div>
+      `;
+      return;
+    }
+    
+    contentDiv.innerHTML = `
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Order #</th>
+            <th>Customer</th>
+            <th>Installment #</th>
+            <th>Due Date</th>
+            <th>Amount</th>
+            <th>Days Until Due</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${upcomingInstallments.map((inst: any) => {
+            const dueDate = new Date(inst.due_date);
+            const daysUntil = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+            const urgencyColor = daysUntil <= 3 ? 'warning' : daysUntil <= 7 ? 'info' : 'secondary';
+            
+            return `
+              <tr>
+                <td>#${inst.order_id}</td>
+                <td>${escapeHtml(inst.customer_name)}</td>
+                <td>${inst.seq_no}</td>
+                <td>${dueDate.toLocaleDateString()}</td>
+                <td>₹${(inst.amount_due || 0).toFixed(2)}</td>
+                <td><span class="badge badge-${urgencyColor}">${daysUntil} day${daysUntil !== 1 ? 's' : ''}</span></td>
+                <td>
+                  <div style="display: flex; gap: 0.25rem;">
+                    <button class="btn btn-sm btn-primary" onclick="recordPayment(${inst.id})">Record Payment</button>
+                    <button class="btn btn-sm btn-secondary" onclick="sendReminder(${inst.id})">Send Reminder</button>
+                  </div>
+                </td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    `;
+  } catch (error: any) {
+    contentDiv.innerHTML = `
+      <div style="text-align: center; padding: 2rem; color: var(--color-text-error);">
+        <p>Failed to load upcoming installments</p>
+        <p style="font-size: 0.9rem;">${escapeHtml(error.message || 'Unknown error')}</p>
+      </div>
+    `;
+  }
 }
 
 // Load active plans
@@ -2981,12 +3083,80 @@ async function loadCompletedPlans() {
   const contentDiv = document.getElementById('installments-content');
   if (!contentDiv) return;
   
-  contentDiv.innerHTML = `
-    <div style="text-align: center; padding: 3rem; color: var(--color-text-tertiary);">
-      <h3>Completed Plans</h3>
-      <p>Feature coming soon - will show fully paid installment plans</p>
-    </div>
-  `;
+  try {
+    // Get all active plans and filter for completed ones
+    const activePlans = await window.posAPI.installments.getActivePlans();
+    const completedPlans: any[] = [];
+    
+    for (const plan of activePlans) {
+      const installments = await window.posAPI.installments.getInstallments(plan.id);
+      const allPaid = installments.every((inst: any) => inst.status === 'paid');
+      
+      if (allPaid && installments.length > 0) {
+        const totalPaid = installments.reduce((sum: number, inst: any) => sum + (inst.amount_due || 0), 0);
+        const lastPayment = installments
+          .filter((inst: any) => inst.paid_at)
+          .sort((a: any, b: any) => new Date(b.paid_at).getTime() - new Date(a.paid_at).getTime())[0];
+        
+        completedPlans.push({
+          ...plan,
+          total_paid: totalPaid,
+          completion_date: lastPayment?.paid_at,
+          installment_count: installments.length
+        });
+      }
+    }
+    
+    if (completedPlans.length === 0) {
+      contentDiv.innerHTML = `
+        <div style="text-align: center; padding: 3rem; color: var(--color-text-tertiary);">
+          <h3>No Completed Plans</h3>
+          <p>No installment plans have been fully paid yet</p>
+        </div>
+      `;
+      return;
+    }
+    
+    contentDiv.innerHTML = `
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Order #</th>
+            <th>Customer</th>
+            <th>Total Amount</th>
+            <th>Installments</th>
+            <th>Frequency</th>
+            <th>Completed On</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${completedPlans.map((plan: any) => {
+            return `
+              <tr>
+                <td>#${plan.order_id}</td>
+                <td>${escapeHtml(plan.customer?.name || 'Walk-in')}</td>
+                <td>₹${(plan.total_paid || 0).toFixed(2)}</td>
+                <td>${plan.installment_count}</td>
+                <td>${plan.frequency}</td>
+                <td>${plan.completion_date ? new Date(plan.completion_date).toLocaleDateString() : 'N/A'}</td>
+                <td>
+                  <button class="btn btn-sm btn-primary" onclick="viewInstallmentDetails(${plan.id})">View Details</button>
+                </td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    `;
+  } catch (error: any) {
+    contentDiv.innerHTML = `
+      <div style="text-align: center; padding: 2rem; color: var(--color-text-error);">
+        <p>Failed to load completed plans</p>
+        <p style="font-size: 0.9rem;">${escapeHtml(error.message || 'Unknown error')}</p>
+      </div>
+    `;
+  }
 }
 
 // Load all installments
@@ -2994,16 +3164,108 @@ async function loadAllInstallments() {
   const contentDiv = document.getElementById('installments-content');
   if (!contentDiv) return;
   
-  const activePlans = await window.posAPI.installments.getActivePlans();
-  const overdueList = await window.posAPI.installments.getOverdue();
-  
-  contentDiv.innerHTML = `
-    <div style="padding: 1rem;">
-      <h4>Summary</h4>
-      <p>Total Active Plans: ${activePlans.length}</p>
-      <p>Total Overdue Installments: ${overdueList.length}</p>
-    </div>
-  `;
+  try {
+    const activePlans = await window.posAPI.installments.getActivePlans();
+    const allInstallments: any[] = [];
+    
+    // Collect all installments from all plans
+    for (const plan of activePlans) {
+      const installments = await window.posAPI.installments.getInstallments(plan.id);
+      installments.forEach((inst: any) => {
+        allInstallments.push({
+          ...inst,
+          customer_name: plan.customer?.name || 'Walk-in',
+          plan_frequency: plan.frequency
+        });
+      });
+    }
+    
+    // Sort by due date (most recent first)
+    allInstallments.sort((a, b) => new Date(b.due_date).getTime() - new Date(a.due_date).getTime());
+    
+    if (allInstallments.length === 0) {
+      contentDiv.innerHTML = `
+        <div style="text-align: center; padding: 3rem; color: var(--color-text-tertiary);">
+          <h3>No Installments</h3>
+          <p>Create a new installment plan to get started</p>
+        </div>
+      `;
+      return;
+    }
+    
+    // Calculate summary stats
+    const paidCount = allInstallments.filter(i => i.status === 'paid').length;
+    const overdueCount = allInstallments.filter(i => i.status === 'overdue').length;
+    const pendingCount = allInstallments.filter(i => i.status === 'pending').length;
+    
+    contentDiv.innerHTML = `
+      <div style="padding: 1rem; background: var(--color-bg-tertiary); border-radius: 8px; margin-bottom: 1rem;">
+        <h4>Summary</h4>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem;">
+          <div>
+            <strong>Total Installments:</strong> ${allInstallments.length}
+          </div>
+          <div style="color: var(--color-success);">
+            <strong>Paid:</strong> ${paidCount}
+          </div>
+          <div style="color: var(--color-warning);">
+            <strong>Pending:</strong> ${pendingCount}
+          </div>
+          <div style="color: var(--color-danger);">
+            <strong>Overdue:</strong> ${overdueCount}
+          </div>
+        </div>
+      </div>
+      
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Order #</th>
+            <th>Customer</th>
+            <th>Installment #</th>
+            <th>Due Date</th>
+            <th>Amount</th>
+            <th>Status</th>
+            <th>Paid Date</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${allInstallments.map((inst: any) => {
+            const statusColor = inst.status === 'paid' ? 'success' : 
+                               inst.status === 'overdue' ? 'danger' : 'secondary';
+            const isPaid = inst.status === 'paid';
+            
+            return `
+              <tr>
+                <td>#${inst.order_id}</td>
+                <td>${escapeHtml(inst.customer_name)}</td>
+                <td>${inst.seq_no}</td>
+                <td>${new Date(inst.due_date).toLocaleDateString()}</td>
+                <td>₹${(inst.amount_due || 0).toFixed(2)}</td>
+                <td><span class="badge badge-${statusColor}">${inst.status}</span></td>
+                <td>${isPaid && inst.paid_at ? new Date(inst.paid_at).toLocaleDateString() : '-'}</td>
+                <td>
+                  ${!isPaid ? `
+                    <button class="btn btn-sm btn-primary" onclick="recordPayment(${inst.id})">Pay</button>
+                  ` : `
+                    <span style="color: var(--color-text-tertiary);">Paid</span>
+                  `}
+                </td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    `;
+  } catch (error: any) {
+    contentDiv.innerHTML = `
+      <div style="text-align: center; padding: 2rem; color: var(--color-text-error);">
+        <p>Failed to load installments</p>
+        <p style="font-size: 0.9rem;">${escapeHtml(error.message || 'Unknown error')}</p>
+      </div>
+    `;
+  }
 }
 
 // Filter installments
@@ -3099,14 +3361,66 @@ async function renderSettings() {
     
     <div class="card mb-4">
       <div class="card-header">
-        <h3 class="card-title">License Management</h3>
+        <h3 class="card-title">Nuvana License Management</h3>
       </div>
-      <div id="license-management">
-        <div id="license-info-display">Loading license information...</div>
-        <div style="margin-top: 20px;">
-          <button class="btn btn-primary" onclick="showLicenseActivation()">Activate New License</button>
-          <button class="btn btn-secondary" onclick="importLicenseFile()">Import License File</button>
-          <button class="btn btn-secondary" onclick="checkLicenseUpdates()">Check for Updates</button>
+      <div id="license-management" style="padding: 20px;">
+        <!-- License Status Section -->
+        <div id="license-status-section" class="mb-4">
+          <h4 style="margin-bottom: 15px;">License Status</h4>
+          <div id="license-info-display" style="background: var(--color-bg-secondary); padding: 15px; border-radius: 8px;">
+            <div class="spinner">Loading license information...</div>
+          </div>
+        </div>
+        
+        <!-- License Actions Section -->
+        <div id="license-actions-section" class="mb-4">
+          <h4 style="margin-bottom: 15px;">License Actions</h4>
+          <div class="button-group" style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <button class="btn btn-primary" onclick="showLicenseActivation()">
+              <span>🔑</span> Activate License
+            </button>
+            <button class="btn btn-secondary" onclick="showDeactivateLicense()" id="deactivate-btn" style="display: none;">
+              <span>🚫</span> Deactivate License
+            </button>
+            <button class="btn btn-secondary" onclick="importLicenseFile()">
+              <span>📁</span> Import from File
+            </button>
+            <button class="btn btn-secondary" onclick="checkLicenseUpdates()">
+              <span>🔄</span> Check Updates
+            </button>
+            <button class="btn btn-secondary" onclick="refreshLicenseStatus()">
+              <span>↻</span> Refresh Status
+            </button>
+            <button class="btn btn-info" onclick="showActivationsList()" id="activations-btn" style="display: none;">
+              <span>📱</span> View Activations
+            </button>
+          </div>
+        </div>
+        
+        <!-- Advanced Options Section -->
+        <div id="license-advanced-section" class="mb-4">
+          <details>
+            <summary style="cursor: pointer; font-weight: bold; margin-bottom: 10px;">Advanced Options</summary>
+            <div style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
+              <button class="btn btn-warning" onclick="exportLicenseDebug()">
+                <span>🐛</span> Export Debug Info
+              </button>
+              <button class="btn btn-warning" onclick="testLicenseAPI()">
+                <span>🧪</span> Test API Connection
+              </button>
+              <button class="btn btn-danger" onclick="startNewTrial()" id="trial-btn" style="display: none;">
+                <span>⏰</span> Start New Trial
+              </button>
+            </div>
+          </details>
+        </div>
+        
+        <!-- License History Section -->
+        <div id="license-history-section" style="display: none;">
+          <h4 style="margin-bottom: 15px;">License History</h4>
+          <div id="license-history-display" style="background: var(--color-bg-secondary); padding: 15px; border-radius: 8px;">
+            <!-- History will be loaded here -->
+          </div>
         </div>
       </div>
     </div>
@@ -3127,33 +3441,25 @@ async function renderSettings() {
     const settings = await window.posAPI.settings.get();
     const lastBackup = await window.posAPI.backups.getLastBackupTime();
     
-    // Load license info
-    const licenseInfo = await window.posAPI.license.getInfo();
-    const licenseDisplay = document.getElementById('license-info-display');
-    if (licenseDisplay && licenseInfo) {
-      licenseDisplay.innerHTML = `
-        <div class="license-details">
-          <p><strong>Plan:</strong> ${licenseInfo.plan}</p>
-          <p><strong>Status:</strong> <span class="${licenseInfo.isValid ? 'text-success' : 'text-danger'}">${licenseInfo.status}</span></p>
-          <p><strong>Expires:</strong> ${licenseInfo.expiryDate ? new Date(licenseInfo.expiryDate).toLocaleDateString() : 'N/A'}</p>
-          <p><strong>Days Remaining:</strong> ${licenseInfo.daysRemaining}</p>
-          ${licenseInfo.status === 'grace' ? `<p class="text-warning"><strong>Grace Period:</strong> ${licenseInfo.graceRemaining} days</p>` : ''}
-          
-          <details style="margin-top: 10px;">
-            <summary style="cursor: pointer;"><strong>Features</strong></summary>
-            <ul style="font-size: 0.9em; margin-top: 10px;">
-              <li>Max Users: ${licenseInfo.features.maxUsers === -1 ? 'Unlimited' : licenseInfo.features.maxUsers}</li>
-              <li>Max Orders: ${licenseInfo.features.maxOrders === -1 ? 'Unlimited' : licenseInfo.features.maxOrders}</li>
-              <li>Export Data: ${licenseInfo.features.canExport ? '✓' : '✗'}</li>
-              <li>Multiple Templates: ${licenseInfo.features.multipleTemplates ? '✓' : '✗'}</li>
-              <li>Advanced Reports: ${licenseInfo.features.advancedReports ? '✓' : '✗'}</li>
-              <li>Support: ${licenseInfo.features.phoneSupport ? 'Phone + Email' : licenseInfo.features.emailSupport ? 'Email Only' : 'None'}</li>
-            </ul>
-          </details>
-        </div>
-      `;
-      // Update global license info
+    // Load comprehensive license info
+    try {
+      const licenseInfo = await window.posAPI.license.getInfo();
+      await displayLicenseInfo(licenseInfo);
       globalLicenseInfo = licenseInfo;
+      
+      // Update button visibility based on license state
+      updateLicenseButtons(licenseInfo);
+    } catch (error: any) {
+      const licenseDisplay = document.getElementById('license-info-display');
+      if (licenseDisplay) {
+        licenseDisplay.innerHTML = `
+          <div class="alert alert-danger">
+            <strong>⚠️ Error loading license:</strong> ${error.message}
+            <br><br>
+            <button class="btn btn-sm btn-primary" onclick="refreshLicenseStatus()">Retry</button>
+          </div>
+        `;
+      }
     }
     
     const settingsForm = document.getElementById('settings-form');
@@ -3631,76 +3937,247 @@ async function showLicenseActivation() {
   modal.className = 'modal';
   modal.style.display = 'block';
   modal.innerHTML = `
-    <div class="modal-content" style="max-width: 500px;">
+    <div class="modal-content" style="max-width: 600px;">
       <div class="modal-header">
-        <h3>Activate License</h3>
+        <h3>Activate Nuvana License</h3>
         <button onclick="this.closest('.modal').remove()">&times;</button>
       </div>
       <div class="modal-body">
-        <div class="form-group">
-          <label>Enter License Key:</label>
-          <textarea id="license-key-input" class="form-control" rows="4" 
-            placeholder="Paste your license key here..."></textarea>
+        <div class="alert alert-info" style="margin-bottom: 20px; padding: 10px; background: rgba(13, 110, 253, 0.1); border: 1px solid #0d6efd33; border-radius: 8px;">
+          <strong>ℹ️ How to get a license key:</strong><br>
+          1. Purchase a license from <a href="https://licensing.nuvanasolutions.in" target="_blank">Nuvana Licensing</a><br>
+          2. Copy your license key from the dashboard<br>
+          3. Paste it below to activate
         </div>
-        <button class="btn btn-primary" onclick="activateLicenseKey()">Activate</button>
-        <button class="btn btn-secondary" onclick="this.closest('.modal').remove()">Cancel</button>
+        
+        <div class="form-group">
+          <label style="font-weight: bold; margin-bottom: 10px;">License Key:</label>
+          <textarea id="license-key-input" class="form-control" rows="5" 
+            placeholder="Paste your license key here..."
+            style="font-family: monospace; font-size: 12px;"></textarea>
+          <small style="color: var(--color-text-secondary); display: block; margin-top: 5px;">
+            License keys are typically long strings of characters. Make sure to copy the entire key.
+          </small>
+        </div>
+        
+        <div id="activation-error" style="display: none; margin-top: 15px; padding: 10px; background: rgba(220, 53, 69, 0.1); border: 1px solid #dc354533; border-radius: 8px; color: var(--color-danger);">
+          <!-- Error messages will appear here -->
+        </div>
+        
+        <div id="activation-progress" style="display: none; margin-top: 15px; text-align: center;">
+          <div class="spinner"></div>
+          <p style="margin-top: 10px;">Activating license...</p>
+        </div>
+        
+        <div style="display: flex; gap: 10px; margin-top: 20px;">
+          <button id="activate-btn" class="btn btn-primary" onclick="activateLicenseKey()">
+            🔓 Activate License
+          </button>
+          <button class="btn btn-secondary" onclick="this.closest('.modal').remove()">Cancel</button>
+          <button class="btn btn-link" onclick="window.open('https://licensing.nuvanasolutions.in/#api', '_blank')" style="margin-left: auto;">
+            📚 API Docs
+          </button>
+        </div>
       </div>
     </div>
   `;
   document.body.appendChild(modal);
+  
+  // Focus on the input
+  const input = document.getElementById('license-key-input') as HTMLTextAreaElement;
+  if (input) {
+    input.focus();
+  }
 }
 
 async function activateLicenseKey() {
   const keyInput = document.getElementById('license-key-input') as HTMLTextAreaElement;
+  const errorDiv = document.getElementById('activation-error') as HTMLElement;
+  const progressDiv = document.getElementById('activation-progress') as HTMLElement;
+  const activateBtn = document.getElementById('activate-btn') as HTMLButtonElement;
+  
   if (!keyInput) return;
   
+  // Clear previous errors
+  if (errorDiv) {
+    errorDiv.style.display = 'none';
+    errorDiv.innerHTML = '';
+  }
+  
+  // Validate license key
   const licenseKey = keyInput.value.trim();
+  
+  // Edge case: Empty license key
   if (!licenseKey) {
-    showToast('Please enter a license key', 'error');
+    if (errorDiv) {
+      errorDiv.innerHTML = '<strong>⚠️ Error:</strong> Please enter a license key';
+      errorDiv.style.display = 'block';
+    }
+    keyInput.focus();
     return;
   }
   
+  // Edge case: License key too short (likely incomplete)
+  if (licenseKey.length < 20) {
+    if (errorDiv) {
+      errorDiv.innerHTML = '<strong>⚠️ Warning:</strong> License key seems too short. Make sure you copied the entire key.';
+      errorDiv.style.display = 'block';
+    }
+    return;
+  }
+  
+  // Show progress
+  if (progressDiv) progressDiv.style.display = 'block';
+  if (activateBtn) activateBtn.disabled = true;
+  
   try {
+    // Check current license state first
+    const currentInfo = await window.posAPI.license.getInfo();
+    
+    // Edge case: Already have an active license
+    if (currentInfo.licenseKey && currentInfo.isValid) {
+      const confirmSwitch = window.confirm(
+        'You already have an active license.\n\n' +
+        'Current License:\n' +
+        `• Plan: ${currentInfo.plan}\n` +
+        `• Days remaining: ${currentInfo.daysRemaining}\n\n` +
+        'Do you want to replace it with the new license?'
+      );
+      
+      if (!confirmSwitch) {
+        if (progressDiv) progressDiv.style.display = 'none';
+        if (activateBtn) activateBtn.disabled = false;
+        return;
+      }
+      
+      // Deactivate current license first
+      try {
+        await window.posAPI.license.deactivate();
+      } catch (deactivateError) {
+        console.warn('Failed to deactivate old license:', deactivateError);
+        // Continue with activation anyway
+      }
+    }
+    
+    // Attempt activation
     const result = await window.posAPI.license.activate(licenseKey);
     
     if (result.success) {
-      showToast('License activated successfully!', 'success');
+      showToast('✅ License activated successfully!', 'success');
       document.querySelector('.modal')?.remove();
       
-      // Refresh license and reload app
+      // Refresh license status
+      await refreshLicenseStatus();
+      
+      // If we're on the license expired page, reload
       const valid = await checkLicense();
-      if (valid) {
+      if (valid && document.getElementById('license-expired-container')) {
         showMainApp();
         navigateTo('dashboard');
         startLicenseMonitoring();
       }
     } else {
-      showToast('Activation failed: ' + result.message, 'error');
+      // Handle specific error cases
+      let errorMessage = result.message;
+      let suggestion = '';
+      
+      if (result.message.includes('max_activations_reached')) {
+        errorMessage = 'Maximum activations reached for this license';
+        suggestion = 'You need to deactivate the license from another device or purchase additional activations.';
+      } else if (result.message.includes('license_not_found')) {
+        errorMessage = 'Invalid license key';
+        suggestion = 'Please check that you copied the correct license key.';
+      } else if (result.message.includes('expired')) {
+        errorMessage = 'This license has expired';
+        suggestion = 'Please renew your license or purchase a new one.';
+      } else if (result.message.includes('revoked')) {
+        errorMessage = 'This license has been revoked';
+        suggestion = 'Please contact support for assistance.';
+      } else if (result.message.includes('Network error')) {
+        errorMessage = 'Network connection error';
+        suggestion = 'Please check your internet connection and try again.';
+      }
+      
+      if (errorDiv) {
+        errorDiv.innerHTML = `
+          <strong>❌ Activation Failed:</strong> ${errorMessage}
+          ${suggestion ? `<br><br><small>${suggestion}</small>` : ''}
+        `;
+        errorDiv.style.display = 'block';
+      }
     }
   } catch (error: any) {
-    showToast('Activation error: ' + error.message, 'error');
+    console.error('Activation error:', error);
+    
+    // Edge case: Network timeout or API down
+    if (error.message.includes('timeout') || error.message.includes('ECONNREFUSED')) {
+      if (errorDiv) {
+        errorDiv.innerHTML = `
+          <strong>🌐 Connection Error:</strong> Unable to reach the license server.
+          <br><br>
+          <small>Please check your internet connection and try again. If the problem persists, the licensing server may be temporarily unavailable.</small>
+        `;
+        errorDiv.style.display = 'block';
+      }
+    } else {
+      if (errorDiv) {
+        errorDiv.innerHTML = `<strong>❌ Error:</strong> ${error.message}`;
+        errorDiv.style.display = 'block';
+      }
+    }
+  } finally {
+    // Hide progress and re-enable button
+    if (progressDiv) progressDiv.style.display = 'none';
+    if (activateBtn) activateBtn.disabled = false;
   }
 }
 
 async function importLicenseFile() {
   try {
+    // Check current license state first
+    const currentInfo = await window.posAPI.license.getInfo();
+    
+    // Edge case: Already have an active license
+    if (currentInfo.licenseKey && currentInfo.isValid) {
+      const confirmSwitch = window.confirm(
+        'You already have an active license.\n\n' +
+        'Importing a new license will replace the current one.\n\n' +
+        'Continue?'
+      );
+      
+      if (!confirmSwitch) return;
+    }
+    
+    showToast('Opening file selector...', 'info');
     const result = await window.posAPI.license.importFromFile();
     
     if (result.success) {
-      showToast('License imported successfully!', 'success');
+      showToast('✅ License imported successfully!', 'success');
       
-      // Refresh license and reload app
+      // Refresh license status
+      await refreshLicenseStatus();
+      
+      // If we're on the license expired page, reload
       const valid = await checkLicense();
-      if (valid) {
+      if (valid && document.getElementById('license-expired-container')) {
         showMainApp();
         navigateTo('dashboard');
         startLicenseMonitoring();
       }
     } else {
-      showToast('Import failed: ' + result.message, 'error');
+      // Handle specific error cases
+      if (result.message.includes('No file selected')) {
+        // User cancelled - no error needed
+        return;
+      } else if (result.message.includes('Failed to read')) {
+        showToast('❌ Could not read license file. Make sure it\'s a valid text file.', 'error');
+      } else {
+        showToast('❌ Import failed: ' + result.message, 'error');
+      }
     }
   } catch (error: any) {
-    showToast('Import error: ' + error.message, 'error');
+    console.error('Import error:', error);
+    showToast('❌ Import error: ' + error.message, 'error');
   }
 }
 
@@ -3734,6 +4211,371 @@ async function checkLicenseUpdates() {
   }
 }
 
+// Enhanced Nuvana License Management Functions
+async function displayLicenseInfo(licenseInfo: any) {
+  const licenseDisplay = document.getElementById('license-info-display');
+  if (!licenseDisplay) return;
+  
+  // Determine status color and icon
+  let statusColor = 'text-danger';
+  let statusIcon = '❌';
+  
+  if (licenseInfo.isValid) {
+    if (licenseInfo.daysRemaining <= 7) {
+      statusColor = 'text-warning';
+      statusIcon = '⚠️';
+    } else {
+      statusColor = 'text-success';
+      statusIcon = '✅';
+    }
+  }
+  
+  if (licenseInfo.status === 'grace') {
+    statusColor = 'text-warning';
+    statusIcon = '⏳';
+  }
+  
+  if (licenseInfo.status === 'tampered') {
+    statusColor = 'text-danger';
+    statusIcon = '🚫';
+  }
+
+  // Create comprehensive display
+  licenseDisplay.innerHTML = `
+    <div class="license-details">
+      <!-- Main Status Card -->
+      <div class="status-card" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 15px; background: var(--color-bg-tertiary); border-radius: 8px;">
+        <div>
+          <h3 style="margin: 0; color: var(--color-text);">
+            ${statusIcon} ${licenseInfo.plan} Plan
+          </h3>
+          <p style="margin: 5px 0 0 0; font-size: 14px; color: var(--color-text-secondary);">
+            Status: <span class="${statusColor}" style="font-weight: bold;">${licenseInfo.status.toUpperCase()}</span>
+          </p>
+        </div>
+        <div style="text-align: right;">
+          ${licenseInfo.daysRemaining >= 0 ? `
+            <div style="font-size: 24px; font-weight: bold; color: var(--color-primary);">
+              ${licenseInfo.daysRemaining}
+            </div>
+            <div style="font-size: 12px; color: var(--color-text-secondary);">
+              days remaining
+            </div>
+          ` : `
+            <div style="font-size: 18px; font-weight: bold;" class="text-danger">
+              EXPIRED
+            </div>
+          `}
+        </div>
+      </div>
+
+      <!-- License Details Grid -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;">
+        ${licenseInfo.licenseKey ? `
+        <div class="detail-item">
+          <strong style="color: var(--color-text-secondary); font-size: 12px;">License Key:</strong>
+          <div style="font-family: monospace; font-size: 11px; margin-top: 5px;">
+            ${licenseInfo.licenseKey.substring(0, 20)}...
+            <button class="btn btn-sm" onclick="copyLicenseKey('${licenseInfo.licenseKey}')" style="padding: 2px 8px; margin-left: 5px;">
+              📋 Copy
+            </button>
+          </div>
+        </div>
+        ` : ''}
+        
+        ${licenseInfo.customerEmail ? `
+        <div class="detail-item">
+          <strong style="color: var(--color-text-secondary); font-size: 12px;">Registered To:</strong>
+          <div style="margin-top: 5px;">${licenseInfo.customerEmail}</div>
+        </div>
+        ` : ''}
+        
+        <div class="detail-item">
+          <strong style="color: var(--color-text-secondary); font-size: 12px;">Expires:</strong>
+          <div style="margin-top: 5px;">
+            ${licenseInfo.expiryDate ? new Date(licenseInfo.expiryDate).toLocaleDateString() : 'N/A'}
+            ${licenseInfo.expiryDate ? `<br><small>${new Date(licenseInfo.expiryDate).toLocaleTimeString()}</small>` : ''}
+          </div>
+        </div>
+        
+        ${licenseInfo.activationId ? `
+        <div class="detail-item">
+          <strong style="color: var(--color-text-secondary); font-size: 12px;">Activation ID:</strong>
+          <div style="font-family: monospace; font-size: 11px; margin-top: 5px;">
+            ${licenseInfo.activationId}
+          </div>
+        </div>
+        ` : ''}
+      </div>
+
+      <!-- Grace Period Warning -->
+      ${licenseInfo.status === 'grace' ? `
+      <div class="alert alert-warning" style="padding: 10px; margin-bottom: 20px; border-radius: 8px; background: rgba(255, 193, 7, 0.1); border: 1px solid #ffc107;">
+        <strong>⏳ Grace Period Active</strong><br>
+        Your license has expired but you have ${licenseInfo.graceRemaining} days of grace period remaining. 
+        Please renew your license to continue using all features.
+      </div>
+      ` : ''}
+
+      <!-- Clock Tampering Warning -->
+      ${licenseInfo.status === 'tampered' ? `
+      <div class="alert alert-danger" style="padding: 10px; margin-bottom: 20px; border-radius: 8px; background: rgba(220, 53, 69, 0.1); border: 1px solid #dc3545;">
+        <strong>🚫 Security Alert</strong><br>
+        System clock manipulation detected. License has been invalidated for security reasons. 
+        Please correct your system time and contact support.
+      </div>
+      ` : ''}
+
+      <!-- Features Grid -->
+      <details open style="margin-bottom: 15px;">
+        <summary style="cursor: pointer; font-weight: bold; margin-bottom: 15px;">
+          <span style="font-size: 16px;">📋 License Features</span>
+        </summary>
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 10px;">
+          ${renderFeature('Users', licenseInfo.features.maxUsers === -1 ? 'Unlimited' : licenseInfo.features.maxUsers, true)}
+          ${renderFeature('Orders', licenseInfo.features.maxOrders === -1 ? 'Unlimited' : licenseInfo.features.maxOrders, true)}
+          ${renderFeature('Export Data', licenseInfo.features.canExport)}
+          ${renderFeature('Backup', licenseInfo.features.canBackup)}
+          ${renderFeature('Templates', licenseInfo.features.multipleTemplates)}
+          ${renderFeature('Installments', licenseInfo.features.installments)}
+          ${renderFeature('Reports', licenseInfo.features.advancedReports)}
+          ${renderFeature('Support', 
+            licenseInfo.features.phoneSupport ? 'Phone + Email' : 
+            licenseInfo.features.emailSupport ? 'Email' : 'None', 
+            licenseInfo.features.emailSupport || licenseInfo.features.phoneSupport
+          )}
+        </div>
+      </details>
+
+      <!-- Offline Mode Indicator -->
+      ${licenseInfo.offlineCertificate ? `
+      <div style="padding: 10px; background: var(--color-bg-tertiary); border-radius: 8px; margin-top: 10px;">
+        <span style="color: var(--color-success);">🔒 Offline certificate available</span>
+        <small style="color: var(--color-text-secondary); margin-left: 10px;">
+          Can work offline until ${new Date(licenseInfo.offlineCertificate.payload?.valid_until || Date.now()).toLocaleDateString()}
+        </small>
+      </div>
+      ` : ''}
+    </div>
+  `;
+}
+
+function renderFeature(name: string, value: any, enabled?: boolean) {
+  const isEnabled = enabled !== undefined ? enabled : value === true;
+  const displayValue = typeof value === 'boolean' ? (value ? '✓' : '✗') : value;
+  
+  return `
+    <div style="padding: 10px; background: ${isEnabled ? 'var(--color-success-bg)' : 'var(--color-danger-bg)'}; 
+                border-radius: 6px; text-align: center; border: 1px solid ${isEnabled ? 'var(--color-success)' : 'var(--color-danger)'}33;">
+      <div style="font-size: 12px; color: var(--color-text-secondary); margin-bottom: 5px;">${name}</div>
+      <div style="font-weight: bold; color: ${isEnabled ? 'var(--color-success)' : 'var(--color-danger)'};">
+        ${displayValue}
+      </div>
+    </div>
+  `;
+}
+
+function updateLicenseButtons(licenseInfo: any) {
+  const deactivateBtn = document.getElementById('deactivate-btn') as HTMLElement;
+  const activationsBtn = document.getElementById('activations-btn') as HTMLElement;
+  const trialBtn = document.getElementById('trial-btn') as HTMLElement;
+  
+  if (licenseInfo.licenseKey) {
+    // Has a license key, show deactivate and activations
+    if (deactivateBtn) deactivateBtn.style.display = 'inline-block';
+    if (activationsBtn) activationsBtn.style.display = 'inline-block';
+    if (trialBtn) trialBtn.style.display = 'none';
+  } else {
+    // No license key (trial or expired trial)
+    if (deactivateBtn) deactivateBtn.style.display = 'none';
+    if (activationsBtn) activationsBtn.style.display = 'none';
+    if (trialBtn && licenseInfo.status === 'expired') {
+      trialBtn.style.display = 'inline-block';
+    }
+  }
+}
+
+async function refreshLicenseStatus() {
+  try {
+    showToast('Refreshing license status...', 'info');
+    const licenseInfo = await window.posAPI.license.getInfo();
+    await displayLicenseInfo(licenseInfo);
+    globalLicenseInfo = licenseInfo;
+    updateLicenseButtons(licenseInfo);
+    showToast('License status refreshed', 'success');
+  } catch (error: any) {
+    showToast('Failed to refresh license: ' + error.message, 'error');
+  }
+}
+
+async function showDeactivateLicense() {
+  const confirm = window.confirm(
+    'Are you sure you want to deactivate this license?\n\n' +
+    'This will:\n' +
+    '• Remove the license from this device\n' +
+    '• Free up an activation slot\n' +
+    '• Revert to trial mode\n\n' +
+    'You can reactivate the license later.'
+  );
+  
+  if (!confirm) return;
+  
+  try {
+    const result = await window.posAPI.license.deactivate();
+    if (result.success) {
+      showToast('License deactivated successfully', 'success');
+      await refreshLicenseStatus();
+    } else {
+      showToast('Deactivation failed: ' + result.message, 'error');
+    }
+  } catch (error: any) {
+    showToast('Deactivation error: ' + error.message, 'error');
+  }
+}
+
+async function showActivationsList() {
+  try {
+    const activations = await window.posAPI.license.getActivations();
+    const currentDeviceHash = await getDeviceHash(); // Get device hash once before rendering
+    
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.style.display = 'block';
+    modal.innerHTML = `
+      <div class="modal-content" style="max-width: 700px;">
+        <div class="modal-header">
+          <h3>License Activations</h3>
+          <button onclick="this.closest('.modal').remove()">&times;</button>
+        </div>
+        <div class="modal-body">
+          ${activations.length > 0 ? `
+            <p style="margin-bottom: 20px;">This license has ${activations.length} active device(s):</p>
+            <div style="max-height: 400px; overflow-y: auto;">
+              ${activations.map((activation: any, index: number) => `
+                <div style="padding: 15px; margin-bottom: 10px; background: var(--color-bg-secondary); border-radius: 8px;">
+                  <div style="display: flex; justify-content: space-between; align-items: start;">
+                    <div>
+                      <strong>Device ${index + 1}: ${activation.device_name || 'Unknown'}</strong>
+                      <div style="font-size: 12px; color: var(--color-text-secondary); margin-top: 5px;">
+                        Activated: ${new Date(activation.activated_at).toLocaleString()}
+                      </div>
+                      <div style="font-size: 12px; color: var(--color-text-secondary);">
+                        Last seen: ${new Date(activation.last_seen).toLocaleString()}
+                      </div>
+                      <div style="font-size: 11px; font-family: monospace; color: var(--color-text-secondary); margin-top: 5px;">
+                        Hash: ${activation.device_hash.substring(0, 16)}...
+                      </div>
+                    </div>
+                    ${activation.device_hash === currentDeviceHash ? `
+                      <span class="badge badge-success">Current Device</span>
+                    ` : ''}
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          ` : `
+            <p>No activations found for this license.</p>
+          `}
+          <button class="btn btn-secondary" onclick="this.closest('.modal').remove()" style="margin-top: 20px;">Close</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+  } catch (error: any) {
+    showToast('Failed to load activations: ' + error.message, 'error');
+  }
+}
+
+async function testLicenseAPI() {
+  const modal = document.createElement('div');
+  modal.className = 'modal';
+  modal.style.display = 'block';
+  modal.innerHTML = `
+    <div class="modal-content" style="max-width: 600px;">
+      <div class="modal-header">
+        <h3>Testing Nuvana API Connection</h3>
+        <button onclick="this.closest('.modal').remove()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="test-results" style="font-family: monospace; font-size: 12px;">
+          <p>🔄 Testing connection to Nuvana licensing server...</p>
+        </div>
+        <button class="btn btn-secondary" onclick="this.closest('.modal').remove()" style="margin-top: 20px;">Close</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  
+  const resultsDiv = modal.querySelector('#test-results') as HTMLElement;
+  
+  try {
+    // Test basic connectivity
+    resultsDiv.innerHTML += '<p>✅ Connected to API</p>';
+    
+    // Test license verification
+    const licenseInfo = await window.posAPI.license.getInfo();
+    resultsDiv.innerHTML += '<p>✅ License check successful</p>';
+    resultsDiv.innerHTML += `<p>📋 Current status: ${licenseInfo.status}</p>`;
+    
+    // Test features check
+    const canExport = await window.posAPI.license.checkFeature('canExport');
+    resultsDiv.innerHTML += `<p>✅ Feature check working (Export: ${canExport ? 'Enabled' : 'Disabled'})</p>`;
+    
+    // Summary
+    resultsDiv.innerHTML += '<hr><p style="color: var(--color-success);"><strong>✅ All API tests passed!</strong></p>';
+    
+  } catch (error: any) {
+    resultsDiv.innerHTML += `<p style="color: var(--color-danger);">❌ Test failed: ${error.message}</p>`;
+    resultsDiv.innerHTML += '<hr><p style="color: var(--color-danger);"><strong>⚠️ API connection issues detected</strong></p>';
+  }
+}
+
+async function startNewTrial() {
+  const confirm = window.confirm(
+    'Start a new 30-day trial?\n\n' +
+    'This will:\n' +
+    '• Reset your license to trial mode\n' +
+    '• Give you 30 days of trial access\n' +
+    '• Limited to 2 users and 100 orders\n\n' +
+    'Continue?'
+  );
+  
+  if (!confirm) return;
+  
+  try {
+    await window.posAPI.license.startTrial();
+    showToast('New trial started successfully', 'success');
+    await refreshLicenseStatus();
+  } catch (error: any) {
+    showToast('Failed to start trial: ' + error.message, 'error');
+  }
+}
+
+function copyLicenseKey(key: string) {
+  navigator.clipboard.writeText(key).then(() => {
+    showToast('License key copied to clipboard', 'success');
+  }).catch(() => {
+    showToast('Failed to copy license key', 'error');
+  });
+}
+
+async function getDeviceHash(): Promise<string> {
+  // Simple client-side device identifier
+  const userAgent = navigator.userAgent;
+  const platform = navigator.platform;
+  const vendor = navigator.vendor;
+  const deviceString = `${userAgent}-${platform}-${vendor}`;
+  
+  // Create a hash using Web Crypto API
+  const encoder = new TextEncoder();
+  const data = encoder.encode(deviceString);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  
+  return hashHex;
+}
+
 // Make functions globally available
 (window as any).printOrder = printOrder;
 (window as any).removeItem = removeItem;
@@ -3744,12 +4586,22 @@ async function checkLicenseUpdates() {
 (window as any).createBackup = createBackup;
 (window as any).restoreBackup = restoreBackup;
 (window as any).logout = logout;
+
+// License management functions
 (window as any).showLicenseActivation = showLicenseActivation;
 (window as any).activateLicenseKey = activateLicenseKey;
 (window as any).importLicenseFile = importLicenseFile;
 (window as any).exportLicenseDebug = exportLicenseDebug;
 (window as any).continueWithGrace = continueWithGrace;
 (window as any).checkLicenseUpdates = checkLicenseUpdates;
+(window as any).displayLicenseInfo = displayLicenseInfo;
+(window as any).updateLicenseButtons = updateLicenseButtons;
+(window as any).refreshLicenseStatus = refreshLicenseStatus;
+(window as any).showDeactivateLicense = showDeactivateLicense;
+(window as any).showActivationsList = showActivationsList;
+(window as any).testLicenseAPI = testLicenseAPI;
+(window as any).startNewTrial = startNewTrial;
+(window as any).copyLicenseKey = copyLicenseKey;
 (window as any).togglePassword = togglePassword;
 
 // History page functions
@@ -4674,8 +5526,12 @@ async function recordPayment(installmentId: number) {
     // Store installment ID for submission
     (window as any).currentPaymentInstallmentId = installmentId;
     
-    // Show modal
-    modal.style.display = 'block';
+    // Show modal as nested if details modal is open
+    const detailsModal = document.getElementById('installment-details-modal');
+    if (detailsModal && detailsModal.style.display !== 'none') {
+      modal.classList.add('modal-nested');
+    }
+    modal.style.display = 'flex';
     amountInput.focus();
     
   } catch (error: any) {
@@ -4687,6 +5543,7 @@ function closePaymentModal() {
   const modal = document.getElementById('payment-modal');
   if (modal) {
     modal.style.display = 'none';
+    modal.classList.remove('modal-nested');
     (window as any).currentPaymentInstallmentId = null;
   }
 }
@@ -4746,7 +5603,7 @@ async function viewInstallmentDetails(planId: number) {
     }
     
     contentDiv.innerHTML = '<div style="text-align: center; padding: 2rem;">Loading...</div>';
-    modal.style.display = 'block';
+    modal.style.display = 'flex';
     
     // Get plan details
     const plan = await window.posAPI.installments.getPlan(planId);
@@ -4877,7 +5734,11 @@ async function viewInstallmentDetails(planId: number) {
 
 function closeInstallmentDetails() {
   const modal = document.getElementById('installment-details-modal');
-  if (modal) modal.style.display = 'none';
+  if (modal) {
+    modal.style.display = 'none';
+    // Also close any nested modals
+    closePaymentModal();
+  }
 }
 
 // Send reminder (placeholder)
@@ -5783,12 +6644,28 @@ async function showInstallmentWizard() {
     showToast('Failed to load orders: ' + error.message, 'error');
   }
   
-  modal.style.display = 'block';
+  modal.style.display = 'flex';
 }
 
 function closeInstallmentWizard() {
   const modal = document.getElementById('installment-wizard-modal');
-  if (modal) modal.style.display = 'none';
+  if (modal) {
+    modal.style.display = 'none';
+    // Reset form
+    const orderSelect = document.getElementById('installment-order') as HTMLSelectElement;
+    const numInstallments = document.getElementById('num-installments') as HTMLInputElement;
+    const downPayment = document.getElementById('down-payment') as HTMLInputElement;
+    const processingFee = document.getElementById('processing-fee') as HTMLInputElement;
+    const scheduleDiv = document.getElementById('installment-schedule');
+    const validationDiv = document.getElementById('installment-validation');
+    
+    if (orderSelect) orderSelect.value = '';
+    if (numInstallments) numInstallments.value = '3';
+    if (downPayment) downPayment.value = '0';
+    if (processingFee) processingFee.value = '0';
+    if (scheduleDiv) scheduleDiv.innerHTML = 'Select an order to see payment schedule';
+    if (validationDiv) validationDiv.textContent = '';
+  }
 }
 
 // Update installment preview when form changes

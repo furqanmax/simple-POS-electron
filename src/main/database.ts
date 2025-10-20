@@ -55,6 +55,12 @@ export class DatabaseManager {
     if (currentVersion <= 1) {
       this.migration_v2(db);
     }
+    if (currentVersion <= 2) {
+      this.migration_v3(db);
+    }
+    if (currentVersion <= 3) {
+      this.migration_v4(db);
+    }
     // Future migrations would go here
   }
 
@@ -244,7 +250,7 @@ export class DatabaseManager {
       CREATE INDEX IF NOT EXISTS idx_payments_order_id ON payments(order_id);
       CREATE INDEX IF NOT EXISTS idx_payments_installment_id ON payments(installment_id);
 
-      -- License state
+      -- License state (with Nuvana fields)
       CREATE TABLE IF NOT EXISTS license_state (
         id INTEGER PRIMARY KEY CHECK(id = 1),
         plan TEXT NOT NULL CHECK(plan IN ('Trial', 'Monthly', 'Quarterly', 'Annual')),
@@ -252,7 +258,11 @@ export class DatabaseManager {
         last_verified_at TEXT,
         signed_token_blob TEXT,
         machine_fingerprint TEXT,
-        last_seen_monotonic INTEGER
+        last_seen_monotonic INTEGER DEFAULT 0,
+        license_key TEXT,
+        customer_email TEXT,
+        activation_id TEXT,
+        offline_certificate TEXT
       );
     `);
 
@@ -612,6 +622,46 @@ export class DatabaseManager {
 
     db.pragma('user_version = 2');
     console.log('Migration v2 completed - Roles and permissions system added');
+  }
+
+  private migration_v3(db: Database.Database): void {
+    console.log('Running migration v3 - OpenSourcePOS tables...');
+    // Migration v3 was for OpenSourcePOS integration
+    // Tables are created elsewhere, this just updates the version
+    db.pragma('user_version = 3');
+    console.log('Migration v3 completed - OpenSourcePOS tables');
+  }
+
+  private migration_v4(db: Database.Database): void {
+    console.log('Running migration v4 - Adding Nuvana license fields...');
+    
+    // Check which columns exist in the license_state table
+    const columns = db.prepare("PRAGMA table_info(license_state)").all() as any[];
+    const columnNames = columns.map((col: any) => col.name);
+    
+    // Add missing columns
+    if (!columnNames.includes('license_key')) {
+      db.prepare('ALTER TABLE license_state ADD COLUMN license_key TEXT').run();
+      console.log('Added license_key column');
+    }
+    
+    if (!columnNames.includes('customer_email')) {
+      db.prepare('ALTER TABLE license_state ADD COLUMN customer_email TEXT').run();
+      console.log('Added customer_email column');
+    }
+    
+    if (!columnNames.includes('activation_id')) {
+      db.prepare('ALTER TABLE license_state ADD COLUMN activation_id TEXT').run();
+      console.log('Added activation_id column');
+    }
+    
+    if (!columnNames.includes('offline_certificate')) {
+      db.prepare('ALTER TABLE license_state ADD COLUMN offline_certificate TEXT').run();
+      console.log('Added offline_certificate column');
+    }
+    
+    db.pragma('user_version = 4');
+    console.log('Migration v4 completed - Nuvana license fields added');
   }
 
   private ensureSeedData(): void {

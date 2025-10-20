@@ -243,6 +243,10 @@ export interface LicenseState {
   signed_token_blob?: string;
   machine_fingerprint?: string;
   last_seen_monotonic?: number;
+  license_key?: string;
+  customer_email?: string;
+  activation_id?: string;
+  offline_certificate?: string;
 }
 
 export interface LicenseFeatures {
@@ -270,6 +274,10 @@ export interface LicenseInfo {
   features: LicenseFeatures;
   status: LicenseStatus;
   message: string;
+  licenseKey?: string;
+  customerEmail?: string;
+  activationId?: string;
+  offlineCertificate?: any;
 }
 
 export interface BillSizeSpec {
@@ -443,15 +451,18 @@ export interface IPCApi {
     getInfo: () => Promise<LicenseInfo>;
     getState: () => Promise<LicenseState | null>;
     activate: (licenseKey: string) => Promise<{ success: boolean; message: string }>;
-    deactivate: () => Promise<void>;
+    deactivate: () => Promise<{ success: boolean; message: string }>;
     verify: () => Promise<boolean>;
     checkExpiry: () => Promise<{ expired: boolean; daysRemaining: number; graceRemaining: number }>;
     checkFeature: (feature: string) => Promise<boolean>;
     checkLimit: (type: 'users' | 'orders', current: number) => Promise<boolean>;
-    generateKey: (email: string, plan: LicensePlan, days: number) => Promise<string>;
+    issueLicense: (customerName: string, customerEmail: string, maxActivations: number) => Promise<{ success: boolean; licenseKey?: string; message: string }>;
     exportDebug: () => Promise<void>;
     importFromFile: () => Promise<{ success: boolean; message: string }>;
     checkUpdates: () => Promise<{ available: boolean; message: string }>;
+    getActivations: () => Promise<any[]>;
+    revoke: (licenseKey: string) => Promise<{ success: boolean; message: string }>;
+    startTrial: () => Promise<void>;
   };
 
   // Print
