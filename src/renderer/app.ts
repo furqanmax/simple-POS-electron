@@ -3376,21 +3376,25 @@ async function renderSettings() {
         <div id="license-actions-section" class="mb-4">
           <h4 style="margin-bottom: 15px;">License Actions</h4>
           <div class="button-group" style="display: flex; gap: 10px; flex-wrap: wrap;">
-            <button class="btn btn-primary" onclick="showLicenseActivation()">
+            <!-- Hidden: Activate License button -->
+            <button class="btn btn-primary" onclick="showLicenseActivation()" style="display: none;">
               <span>🔑</span> Activate License
             </button>
             <button class="btn btn-secondary" onclick="showDeactivateLicense()" id="deactivate-btn" style="display: none;">
               <span>🚫</span> Deactivate License
             </button>
-            <button class="btn btn-secondary" onclick="importLicenseFile()">
+            <!-- Hidden: Import from File button -->
+            <button class="btn btn-secondary" onclick="importLicenseFile()" style="display: none;">
               <span>📁</span> Import from File
             </button>
-            <button class="btn btn-info" onclick="importOfflineCertificate()">
+            <button class="btn btn-info" onclick="importOfflineCertificate()" >
               <span>📁</span> Import Certificate File
             </button>
-            <button class="btn btn-info" onclick="uploadOfflineCertificate()">
+            <!-- Hidden: Paste Certificate button -->
+            <button class="btn btn-info" onclick="uploadOfflineCertificate()" style="display: none;">
               <span>📤</span> Paste Certificate
             </button>
+            <!-- Hidden: Download Certificate button -->
             <button class="btn btn-info" onclick="downloadOfflineCertificate()" id="download-cert-btn" style="display: none;">
               <span>💾</span> Download Certificate
             </button>
@@ -3400,6 +3404,7 @@ async function renderSettings() {
             <button class="btn btn-secondary" onclick="refreshLicenseStatus()">
               <span>↻</span> Refresh Status
             </button>
+            <!-- Hidden: View Activations button -->
             <button class="btn btn-info" onclick="showActivationsList()" id="activations-btn" style="display: none;">
               <span>📱</span> View Activations
             </button>

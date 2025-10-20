@@ -3,7 +3,10 @@
   "version": "1.0.0",
   "description": "Electron POS with SQLite, roles, templates, licensing, and installments",
   "main": "dist/main/main/main.js",
-  "author": "YourBrand",
+  "author": {
+    "name": "YourBrand",
+    "email": "support@yourbrand.com"
+  },
   "license": "MIT",
   "scripts": {
     "start": "npm run build && node scripts/start.js",
@@ -73,8 +76,9 @@
         "AppImage",
         "deb"
       ],
-      "icon": "assets/icon.png",
-      "category": "Office"
+      "icon": "assets/icons",
+      "category": "Office",
+      "maintainer": "support@yourbrand.com"
     }
   }
 }
