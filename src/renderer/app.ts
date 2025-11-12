@@ -906,23 +906,13 @@ function addItemToOrder() {
   
   const lineTotal = quantity * unitPrice;
   
-  // Check if item already exists and ask to update
-  const existingIndex = currentItems.findIndex(item => item.name.toLowerCase() === name.toLowerCase());
-  if (existingIndex >= 0) {
-    if (confirm(`Item "${name}" already exists. Do you want to add to the existing quantity?`)) {
-      currentItems[existingIndex].quantity += quantity;
-      currentItems[existingIndex].line_total = currentItems[existingIndex].quantity * currentItems[existingIndex].unit_price;
-    } else {
-      return;
-    }
-  } else {
-    currentItems.push({
-      name,
-      quantity,
-      unit_price: unitPrice,
-      line_total: lineTotal
-    });
-  }
+  // Always add item as a new line (allow duplicate item names)
+  currentItems.push({
+    name,
+    quantity,
+    unit_price: unitPrice,
+    line_total: lineTotal
+  });
   
   updateItemsList();
   updateOrderTotals();
